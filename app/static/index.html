@@ -24,12 +24,12 @@
     <main id="screen-home" class="screen screen-card">
       <header class="brand-header">
         <div class="brand-emblem" aria-hidden="true">
-          <span class="emblem-disc emblem-light"></span>
-          <span class="emblem-disc emblem-dark"></span>
+          <span id="home-emblem-light" class="emblem-disc emblem-light"></span>
+          <span id="home-emblem-dark" class="emblem-disc emblem-dark"></span>
         </div>
-        <p class="brand-arabic" lang="ar" dir="rtl">الضامة المغربية</p>
+        <p class="brand-arabic" lang="ar" dir="rtl">الضامة المغربية — ديال الزنقة</p>
         <h1 class="brand-title">Moroccan Dama</h1>
-        <p class="brand-subtitle">A private tabletop match for two friends. Create a room and share the link—no account needed.</p>
+        <p class="brand-subtitle">Bottle caps vs. street rocks—play a private match with a friend via link, complete with Moroccan café banter.</p>
       </header>
 
       <div id="home-error" class="alert-box alert-error hidden" role="alert"></div>
@@ -169,6 +169,7 @@
           <span class="captured-label">Captured</span>
           <strong id="opp-captured-count" class="captured-count">0</strong>
         </div>
+        <div id="opp-speech-bubble" class="speech-bubble speech-opp hidden" role="status" aria-live="polite"></div>
       </section>
 
       <!-- Contextual Turn / Mandatory Capture / Multi-step / Game Over strip -->
@@ -199,6 +200,7 @@
 
       <!-- 8x8 Playfield -->
       <div class="board-stage">
+        <div id="cafe-callout" class="cafe-callout hidden" role="status" aria-live="polite"></div>
         <div class="board-frame">
           <div
             id="dama-board"
@@ -208,6 +210,11 @@
           ></div>
         </div>
       </div>
+
+      <!-- Quick-tap Moroccan Darija Banter Bar -->
+      <section class="taunt-strip-wrap" aria-label="Moroccan Darija banter">
+        <div id="taunt-bar" class="taunt-bar"></div>
+      </section>
 
       <!-- Game Over Panel (Screen 4 state alongside the board) -->
       <section id="gameover-panel" class="gameover-panel hidden" aria-live="assertive">
@@ -246,6 +253,17 @@
             <strong id="self-captured-count" class="captured-count">0</strong>
           </div>
 
+          <button
+            id="btn-sound-toggle"
+            type="button"
+            class="btn btn-tiny btn-ghost sound-toggle-btn"
+            aria-label="Mute sound effects"
+            aria-pressed="true"
+            title="Toggle sound effects"
+          >
+            <span id="sound-toggle-label">🔊 Sound</span>
+          </button>
+
           <button id="btn-open-rules-game" type="button" class="btn btn-tiny btn-ghost" aria-label="Game rules">
             Rules
           </button>
@@ -264,6 +282,7 @@
             </div>
           </div>
         </div>
+        <div id="self-speech-bubble" class="speech-bubble speech-self hidden" role="status" aria-live="polite"></div>
       </section>
     </main>
 
@@ -288,9 +307,9 @@
           <button id="btn-close-rules" type="button" class="icon-close" aria-label="Close rules">✕</button>
         </div>
         <ul class="rules-list">
-          <li><strong>8×8 Board, 12 Pieces:</strong> Played on the 32 dark squares. Light moves first.</li>
+          <li><strong>8×8 Street Board:</strong> Played on the 32 dark squares—<strong>Bottle Caps (Bouchonat)</strong> move first against <strong>Street Rocks (7ejrat)</strong>.</li>
           <li><strong>Men (Pawns):</strong> Move 1 square diagonally forward. Capture diagonally forward only (never backward).</li>
-          <li><strong>Flying Kings (Dama):</strong> Crowned on the far row. Move and capture at any unobstructed diagonal distance in all 4 directions.</li>
+          <li><strong>Flying Kings (Dama):</strong> Reaching the far row flips your bottle cap or stacks your rock into a <em>Dama</em>—moving and capturing at any open diagonal distance in all 4 directions.</li>
           <li><strong>Mandatory Maximum Capture:</strong> If a capture exists, you must capture—and must choose a path capturing the greatest total number of pieces.</li>
           <li><strong>Equal Captures:</strong> Equal-length maximum captures are freely selectable (no king tie-break in initial profile).</li>
           <li><strong>Crowning Mid-Jump:</strong> Reaching the far row crowns a man immediately and ends the turn.</li>

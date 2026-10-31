@@ -13,12 +13,14 @@ from app.realtime.messages import (
     PingMessage,
     RequestRematchMessage,
     ResignMessage,
+    SendTauntMessage,
     parse_client_message,
 )
 from app.rooms.manager import RoomError, RoomManager, RoomMoveRejected
 from app.rooms.models import RoomSnapshot
 
 router = APIRouter()
+TAUNT_COOLDOWN_SECONDS = 2.0
 
 
 @dataclass
@@ -106,6 +108,13 @@ class ConnectionHub:
             except RoomError:
                 continue
             await self.send_safe(entry.websocket, payload_builder(snap))
+
+    async def broadcast_raw(self, room_code: str, payload: dict[str, Any]) -> None:
+        room_map = self._rooms.get(room_code)
+        if not room_map:
+            return
+        for entry in list(room_map.values()):
+            await self.send_safe(entry.websocket, payload)
 
 
 @router.websocket("/ws/{room_code}")
@@ -196,6 +205,34 @@ async def room_websocket_endpoint(
 
             if isinstance(msg, PingMessage):
                 await hub.send_safe(websocket, {"type": "pong"})
+                continue
+
+            if isinstance(msg, SendTauntMessage):
+                now_mono = time.monotonic()
+                if (
+                    seat.last_taunt_at is not None
+                    and (now_mono - seat.last_taunt_at) < TAUNT_COOLDOWN_SECONDS
+                ):
+                    await hub.send_safe(
+                        websocket,
+                        {
+                            "type": "error",
+                            "code": "taunt_cooldown",
+                            "message": "Easy there! Wait a moment before sending another line.",
+                        },
+                    )
+                    continue
+
+                seat.last_taunt_at = now_mono
+                await hub.broadcast_raw(
+                    canonical_code,
+                    {
+                        "type": "taunt_sent",
+                        "taunt_id": msg.taunt_id,
+                        "from_color": seat.color,
+                        "sender_name": seat.name,
+                    },
+                )
                 continue
 
             if isinstance(msg, MakeMoveMessage):

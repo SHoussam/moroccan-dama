@@ -69,6 +69,7 @@ class PlayerSeat:
     color: Color
     connected: bool = False
     disconnected_at: float | None = None
+    last_taunt_at: float | None = None
 
 
 @dataclass

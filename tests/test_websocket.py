@@ -9,6 +9,10 @@ def _drain_until_type(ws, target_type: str, max_msgs: int = 5) -> dict:
         msg = ws.receive_json()
         if msg["type"] == target_type:
             return msg
+        if msg["type"] == "error" and target_type != "error":
+            raise AssertionError(
+                f"Expected {target_type!r} but received error frame: {msg!r}"
+            )
     raise AssertionError(f"Did not receive message of type {target_type!r}")
 
 
@@ -226,3 +230,48 @@ def test_token_redacting_log_filter_scrubs_sensitive_ws_urls():
     rendered = record.getMessage()
     assert "secret_player_token_123" not in rendered
     assert "token=[REDACTED]" in rendered
+
+
+def test_websocket_taunt_broadcast_allowlist_and_cooldown():
+    app = create_app()
+    with TestClient(app) as client:
+        p1 = client.post("/api/rooms", json={"player_name": "Houssam"}).json()
+        p2 = client.post(
+            f"/api/rooms/{p1['room_code']}/join", json={"player_name": "Wiam"}
+        ).json()
+        code = p1["room_code"]
+
+        with (
+            client.websocket_connect(f"/ws/{code}?token={p1['player_token']}") as ws1,
+            client.websocket_connect(f"/ws/{code}?token={p2['player_token']}") as ws2,
+        ):
+            _drain_until_type(ws1, "room_state")
+            _drain_until_type(ws2, "room_state")
+
+            # Valid allowlisted Franco-Darija taunt broadcasts to both seats
+            ws1.send_json({"type": "send_taunt", "taunt_id": "chreb_atay"})
+            t1 = _drain_until_type(ws1, "taunt_sent")
+            t2 = _drain_until_type(ws2, "taunt_sent")
+            assert t1["taunt_id"] == "chreb_atay"
+            assert t1["from_color"] == "white"
+            assert t1["sender_name"] == "Houssam"
+            assert t2 == t1
+
+            # Immediate second taunt by same player hits anti-spam cooldown
+            ws1.send_json({"type": "send_taunt", "taunt_id": "hez_yeddik"})
+            cool_err = _drain_until_type(ws1, "error")
+            assert cool_err["code"] == "taunt_cooldown"
+
+            # Other player can still taunt independently without being blocked by p1's cooldown
+            ws2.send_json({"type": "send_taunt", "taunt_id": "fin_ghadi_7ejra"})
+            t2_reply_a = _drain_until_type(ws1, "taunt_sent")
+            t2_reply_b = _drain_until_type(ws2, "taunt_sent")
+            assert t2_reply_a["taunt_id"] == "fin_ghadi_7ejra"
+            assert t2_reply_a["from_color"] == "black"
+            assert t2_reply_a["sender_name"] == "Wiam"
+            assert t2_reply_b == t2_reply_a
+
+            # Unknown / arbitrary text taunt_id is rejected by strict schema allowlist
+            ws2.send_json({"type": "send_taunt", "taunt_id": "<script>alert(1)</script>"})
+            bad_err = _drain_until_type(ws2, "error")
+            assert bad_err["code"] == "invalid_message"

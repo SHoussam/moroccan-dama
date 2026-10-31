@@ -103,6 +103,13 @@ export class RoomSocket {
     return this.send({ type: "request_rematch" });
   }
 
+  sendTaunt(tauntId) {
+    return this.send({
+      type: "send_taunt",
+      taunt_id: tauntId,
+    });
+  }
+
   _clearPing() {
     if (this.pingInterval !== null) {
       window.clearInterval(this.pingInterval);

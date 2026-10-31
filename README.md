@@ -460,6 +460,8 @@ Run the container locally on port `8000`:
 docker run --rm -p 8000:8000 --name moroccan-dama moroccan-dama:latest
 ```
 
+Open `http://localhost:8000` (or `http://127.0.0.1:8000`) in your browser — note that `0.0.0.0:8000` shown in Uvicorn's container log is the bind-all-interfaces address and is not a browseable URL on Windows.
+
 Run in production behind an HTTPS/WSS reverse proxy:
 
 ```bash
@@ -655,6 +657,18 @@ Centralized in `app/game/config.py` (`RulesConfig`):
 - `promote_mid_capture_stops_turn = True` (a man reaching the far row during a capture crowns immediately and ends the turn; configurable to `False`).
 - `captured_pieces_block_during_sequence = True` (captured pieces cannot be jumped twice and act as hurdles until the complete turn is committed).
 - `huffing_enabled = False` (`نفخ` rule disabled in MVP).
+
+### v2.0 — "Dama d'Zanqa" Update (Street Pieces, Animations, Sound & Darija Banter)
+
+- **Authentic Moroccan Street Pieces (`app/static/js/pieces.js`)**:
+  - **Light Side — Soda Bottle Caps (*Bouchonat*)**: 21-tooth crimped tin bottle caps; promotes into a **flipped upside-down bottle cap** showing its inner seal ring and golden *Dama* crown.
+  - **Dark Side — Street Rocks (*7ejrat*)**: Organic, individually seeded river/street pebbles; promotes into a **double-stacked stone cairn** marked with a golden *Dama* crown.
+- **Smooth Non-Blocking Animations (`app/static/js/board.js`)**:
+  - GPU-composited Web Animations API (`transform` / `opacity`) diagonal slides, multi-jump hop arcs, popped/swept captured pieces, coronation flip/stack, and `prefers-reduced-motion` accessibility support.
+- **Material-Matched Tabletop Audio (`app/static/js/audio.js`)**:
+  - Zero-asset Web Audio synthesizer producing tin bottle-cap clinks, stony pebble knocks on cedar wood, rising-pitch multi-jump combos, Moroccan mint-tea glass clinks on taunts, and a persistent `🔊 / 🔇` mute toggle.
+- **Franco-Darija Café Banter (`app/static/js/banter.js`, `app/realtime/messages.py`, `app/realtime/websocket.py`)**:
+  - Strict server-allowlisted WebSocket quick-taunts (`send_taunt` → `taunt_sent`) with per-seat anti-spam cooldown, speech bubbles on both players' bars, and automatic Moroccan café callouts on captures, multi-jumps, promotions, and match finishes.
 
 ---
 

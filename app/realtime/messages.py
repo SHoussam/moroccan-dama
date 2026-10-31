@@ -42,8 +42,44 @@ class PingMessage(BaseModel):
     type: Literal["ping"]
 
 
+TauntId = Literal[
+    "hez_yeddik",
+    "chreb_atay",
+    "kul_wla_nkul",
+    "m3allem",
+    "fin_ghadi_7ejra",
+    "bouchona_dama",
+    "3ti_lkhater",
+    "ach_had_l3eb",
+]
+
+ALLOWED_TAUNT_IDS: frozenset[str] = frozenset(
+    {
+        "hez_yeddik",
+        "chreb_atay",
+        "kul_wla_nkul",
+        "m3allem",
+        "fin_ghadi_7ejra",
+        "bouchona_dama",
+        "3ti_lkhater",
+        "ach_had_l3eb",
+    }
+)
+
+
+class SendTauntMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["send_taunt"]
+    taunt_id: TauntId
+
+
 ClientMessage = Annotated[
-    MakeMoveMessage | ResignMessage | RequestRematchMessage | PingMessage,
+    MakeMoveMessage
+    | ResignMessage
+    | RequestRematchMessage
+    | PingMessage
+    | SendTauntMessage,
     Field(discriminator="type"),
 ]
 
