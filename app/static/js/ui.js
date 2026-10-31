@@ -1,3 +1,6 @@
+import { QUICK_TAUNTS } from "./banter.js";
+import { renderMiniPieceBadge } from "./pieces.js";
+
 const SCREENS = [
   "screen-home",
   "screen-join-invite",
@@ -16,8 +19,17 @@ export class UIController {
     this.netBanner = byId("net-banner");
     this.netBannerText = byId("net-banner-text");
     this.rulesModal = byId("rules-modal");
+    this._bubbleTimers = { opp: null, self: null };
+    this._calloutTimer = null;
+    this._tauntCooldownTimer = null;
 
+    this._renderBrandEmblems();
     this._bindStaticControls();
+  }
+
+  _renderBrandEmblems() {
+    renderMiniPieceBadge(byId("home-emblem-light"), "white");
+    renderMiniPieceBadge(byId("home-emblem-dark"), "black");
   }
 
   _bindStaticControls() {
@@ -44,6 +56,113 @@ export class UIController {
     });
   }
 
+  initTauntBar(onSendTaunt) {
+    const bar = byId("taunt-bar");
+    if (!bar) return;
+    bar.replaceChildren();
+
+    for (const item of QUICK_TAUNTS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "taunt-chip";
+      btn.dataset.tauntId = item.id;
+      btn.textContent = item.short;
+      btn.title = item.bubble;
+      btn.addEventListener("click", () => {
+        if (bar.classList.contains("is-cooling")) return;
+        const sent = onSendTaunt?.(item.id);
+        if (sent !== false) {
+          this._startTauntCooldownUI(bar);
+        }
+      });
+      bar.appendChild(btn);
+    }
+  }
+
+  _startTauntCooldownUI(bar) {
+    bar.classList.add("is-cooling");
+    window.clearTimeout(this._tauntCooldownTimer);
+    this._tauntCooldownTimer = window.setTimeout(() => {
+      bar.classList.remove("is-cooling");
+    }, 2050);
+  }
+
+  setSoundMuted(muted) {
+    const btn = byId("btn-sound-toggle");
+    const label = byId("sound-toggle-label");
+    if (!btn || !label) return;
+    btn.setAttribute("aria-pressed", muted ? "false" : "true");
+    btn.setAttribute(
+      "aria-label",
+      muted ? "Unmute sound effects" : "Mute sound effects"
+    );
+    label.textContent = muted ? "🔇 Muted" : "🔊 Sound";
+  }
+
+  showSpeechBubble(side, senderName, text) {
+    const key = side === "opp" ? "opp" : "self";
+    const el = byId(key === "opp" ? "opp-speech-bubble" : "self-speech-bubble");
+    if (!el) return;
+
+    window.clearTimeout(this._bubbleTimers[key]);
+    el.replaceChildren();
+
+    const author = document.createElement("span");
+    author.className = "speech-author";
+    author.textContent = `${senderName}: `;
+
+    const body = document.createElement("span");
+    body.className = "speech-text";
+    body.textContent = text;
+
+    el.append(author, body);
+    el.classList.remove("hidden", "is-exiting");
+    // Trigger mounted state in next frame for smooth transition
+    window.requestAnimationFrame(() => {
+      el.classList.add("is-visible");
+    });
+
+    this._bubbleTimers[key] = window.setTimeout(() => {
+      el.classList.remove("is-visible");
+      el.classList.add("is-exiting");
+      this._bubbleTimers[key] = window.setTimeout(() => {
+        el.classList.add("hidden");
+        el.classList.remove("is-exiting");
+      }, 220);
+    }, 3400);
+  }
+
+  showCafeCallout(text) {
+    const el = byId("cafe-callout");
+    if (!el || !text) return;
+
+    window.clearTimeout(this._calloutTimer);
+    el.textContent = text;
+    el.classList.remove("hidden", "is-exiting");
+    window.requestAnimationFrame(() => {
+      el.classList.add("is-visible");
+    });
+
+    this._calloutTimer = window.setTimeout(() => {
+      el.classList.remove("is-visible");
+      el.classList.add("is-exiting");
+      this._calloutTimer = window.setTimeout(() => {
+        el.classList.add("hidden");
+        el.classList.remove("is-exiting");
+      }, 220);
+    }, 3000);
+  }
+
+  clearTransientBanter() {
+    for (const id of ["opp-speech-bubble", "self-speech-bubble", "cafe-callout"]) {
+      const el = byId(id);
+      if (el) {
+        el.classList.add("hidden");
+        el.classList.remove("is-visible", "is-exiting");
+      }
+    }
+  }
+
   resetResignConfirm() {
     byId("btn-resign-init")?.classList.remove("hidden");
     byId("resign-confirm-group")?.classList.add("hidden");
@@ -63,6 +182,9 @@ export class UIController {
       if (el) {
         el.classList.toggle("hidden", id !== screenId);
       }
+    }
+    if (screenId !== "screen-game") {
+      this.clearTransientBanter();
     }
     this.resetResignConfirm();
   }
@@ -164,8 +286,8 @@ export class UIController {
     const myColor = roomSnapshot.your_color || "white";
     byId("waiting-seat-info").textContent =
       myColor === "white"
-        ? "Playing as Light (moves first)"
-        : "Playing as Dark";
+        ? "Playing as Bottle Caps (moves first)"
+        : "Playing as Street Rocks";
 
     const shareBtn = byId("btn-share-native");
     if (typeof navigator.share === "function") {
@@ -196,7 +318,10 @@ export class UIController {
     const opp = roomSnapshot.players?.[oppColor];
 
     // Opponent bar
-    byId("opp-piece-badge").className = `piece-mini piece-${oppColor}`;
+    const oppBadge = byId("opp-piece-badge");
+    oppBadge.className = `piece-mini piece-${oppColor}`;
+    renderMiniPieceBadge(oppBadge, oppColor);
+
     byId("opp-name").textContent = opp ? opp.name : "Opponent";
     const oppOnline = Boolean(opp && opp.connected);
     const oppDot = byId("opp-conn-badge");
@@ -204,8 +329,8 @@ export class UIController {
     oppDot.title = oppOnline ? "Connected" : "Disconnected";
     byId("opp-status-sub").textContent = oppOnline
       ? oppColor === "white"
-        ? "Light side • Online"
-        : "Dark side • Online"
+        ? "Bottle Caps • Online"
+        : "Street Rocks • Online"
       : "Reconnecting…";
 
     // Captured counts: pieces captured BY a player = captured pieces of the opposite color
@@ -213,7 +338,10 @@ export class UIController {
     byId("self-captured-count").textContent = String(game.captured?.[oppColor] ?? 0);
 
     // Self bar
-    byId("self-piece-badge").className = `piece-mini piece-${myColor}`;
+    const selfBadge = byId("self-piece-badge");
+    selfBadge.className = `piece-mini piece-${myColor}`;
+    renderMiniPieceBadge(selfBadge, myColor);
+
     byId("self-name").textContent = me ? me.name : "You";
     byId("game-room-code").textContent = roomSnapshot.room_code;
 
@@ -235,6 +363,7 @@ export class UIController {
     const gameoverPanel = byId("gameover-panel");
 
     turnDisc.className = `turn-disc piece-${game.current_turn}`;
+    renderMiniPieceBadge(turnDisc, game.current_turn);
 
     if (game.status === "active") {
       gameoverPanel.classList.add("hidden");
@@ -266,7 +395,7 @@ export class UIController {
         : `${winnerPlayer ? winnerPlayer.name : "Opponent"} won`;
 
       const reasonMap = {
-        no_pieces: "All opposing pieces were captured.",
+        no_pieces: "All opposing pieces were swept off the board.",
         no_legal_moves: "No legal moves remaining.",
         resignation: iWon
           ? `${opp ? opp.name : "Opponent"} resigned the match.`

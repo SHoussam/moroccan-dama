@@ -1,4 +1,4 @@
-const SVG_NS = "http://www.w3.org/2000/svg";
+import { createStreetPieceSvg } from "./pieces.js";
 
 function coordKey([r, c]) {
   return `${r},${c}`;
@@ -8,32 +8,38 @@ function sameCoord(a, b) {
   return Boolean(a && b && a[0] === b[0] && a[1] === b[1]);
 }
 
-function createCrownSvg() {
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  svg.classList.add("crown-icon");
-
-  const path = document.createElementNS(SVG_NS, "path");
-  path.setAttribute(
-    "d",
-    "M3 18h18v2H3v-2zm0-2L5.5 7l4.5 4 2-5 2 5 4.5-4L21 16H3z"
+function prefersReducedMotion() {
+  return Boolean(
+    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
-  svg.appendChild(path);
-  return svg;
 }
 
 export class BoardController {
-  constructor({ container, onCommitMove, onSelectionChange, onIllegalHint }) {
+  constructor({
+    container,
+    onCommitMove,
+    onSelectionChange,
+    onIllegalHint,
+    onSoundEvent,
+  }) {
     this.container = container;
     this.onCommitMove = onCommitMove;
     this.onSelectionChange = onSelectionChange;
     this.onIllegalHint = onIllegalHint;
+    this.onSoundEvent = onSoundEvent;
 
     this.gameState = null;
     this.perspective = "white";
     this.selectedOrigin = null;
     this.partialLandings = [];
+    this._animTimers = [];
+  }
+
+  _clearAnimTimers() {
+    for (const id of this._animTimers) {
+      window.clearTimeout(id);
+    }
+    this._animTimers = [];
   }
 
   resetSelection() {
@@ -59,13 +65,32 @@ export class BoardController {
   }
 
   update(gameState, perspective) {
-    const revChanged = !this.gameState || this.gameState.revision !== gameState.revision;
+    const prevState = this.gameState;
+    const nextPerspective = perspective === "black" ? "black" : "white";
+    const revAdvanced =
+      Boolean(prevState) &&
+      gameState.revision === prevState.revision + 1 &&
+      Boolean(gameState.last_move) &&
+      this.perspective === nextPerspective;
+    const revChanged = !prevState || prevState.revision !== gameState.revision;
+
     this.gameState = gameState;
-    this.perspective = perspective === "black" ? "black" : "white";
-    if (revChanged || gameState.status !== "active" || gameState.current_turn !== this.perspective) {
+    this.perspective = nextPerspective;
+
+    if (
+      revChanged ||
+      gameState.status !== "active" ||
+      gameState.current_turn !== this.perspective
+    ) {
       this.resetSelection();
     }
+
+    this._clearAnimTimers();
     this.render();
+
+    if (revAdvanced && gameState.last_move) {
+      this._animateLastMove(prevState, gameState.last_move, gameState);
+    }
   }
 
   _isMyTurn() {
@@ -122,6 +147,7 @@ export class BoardController {
         }
 
         this.partialLandings = nextLandings;
+        this.onSoundEvent?.({ type: "select", color: this.perspective });
         this.onSelectionChange?.({
           selectedOrigin: this.selectedOrigin,
           partialLandings: [...this.partialLandings],
@@ -141,6 +167,7 @@ export class BoardController {
       if (movableOrigins.has(clickedKey)) {
         this.selectedOrigin = clickedCoord;
         this.partialLandings = [];
+        this.onSoundEvent?.({ type: "select", color: this.perspective });
         this.onSelectionChange?.({
           selectedOrigin: this.selectedOrigin,
           partialLandings: [],
@@ -159,6 +186,7 @@ export class BoardController {
     if (movableOrigins.has(clickedKey)) {
       this.selectedOrigin = clickedCoord;
       this.partialLandings = [];
+      this.onSoundEvent?.({ type: "select", color: this.perspective });
       this.onSelectionChange?.({
         selectedOrigin: this.selectedOrigin,
         partialLandings: [],
@@ -169,6 +197,7 @@ export class BoardController {
 
     const piece = this.gameState.board[r][c];
     if (piece && piece.color === this.perspective && this.gameState.mandatory_capture) {
+      this.onSoundEvent?.({ type: "illegal" });
       this.onIllegalHint?.("Mandatory capture: select a highlighted piece that can jump.");
     }
   }
@@ -198,6 +227,171 @@ export class BoardController {
     nc = Math.max(0, Math.min(7, nc));
     const target = this.container.querySelector(`[data-coord="${nr},${nc}"]`);
     target?.focus();
+  }
+
+  _visualGridPos([r, c]) {
+    if (this.perspective === "black") {
+      return [7 - r, 7 - c];
+    }
+    return [r, c];
+  }
+
+  _animateLastMove(prevState, lastMove, nextState) {
+    const landings = lastMove.landings || [];
+    if (landings.length === 0) return;
+
+    const captured = lastMove.captured || [];
+    const moverColor = lastMove.color || "white";
+    const isCapture = captured.length > 0;
+
+    // Trigger immediate audio when reduced motion is enabled
+    if (prefersReducedMotion() || typeof Element.prototype.animate !== "function") {
+      if (lastMove.promoted) {
+        this.onSoundEvent?.({ type: "promote", color: moverColor });
+      } else if (isCapture) {
+        this.onSoundEvent?.({ type: "capture", color: moverColor, hopIndex: captured.length - 1 });
+      } else {
+        this.onSoundEvent?.({ type: "move", color: moverColor });
+      }
+      return;
+    }
+
+    const sqSize = (this.container?.clientWidth || 320) / 8;
+    const finalCoord = landings[landings.length - 1];
+    const destSquare = this.container.querySelector(`[data-coord="${coordKey(finalCoord)}"]`);
+    const destPieceEl = destSquare?.querySelector(".piece");
+    if (!destSquare || !destPieceEl) return;
+
+    const [finalVr, finalVc] = this._visualGridPos(finalCoord);
+    const waypoints = [lastMove.from, ...landings];
+    const hopCount = waypoints.length - 1;
+    const hopDuration = isCapture ? 175 : 195;
+    const totalMoveDuration = hopCount * hopDuration;
+
+    destSquare.classList.add("is-animating-dest");
+
+    // Build smooth multi-hop arc or single tabletop slide keyframes (transform only!)
+    const keyframes = [];
+    for (let i = 0; i < waypoints.length; i += 1) {
+      const [vr, vc] = this._visualGridPos(waypoints[i]);
+      const dx = (vc - finalVc) * sqSize;
+      const dy = (vr - finalVr) * sqSize;
+      const offset = i / hopCount;
+
+      keyframes.push({
+        transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(1)`,
+        offset,
+      });
+
+      if (i < hopCount) {
+        const [nvr, nvc] = this._visualGridPos(waypoints[i + 1]);
+        const midDx = ((vc + nvc) / 2 - finalVc) * sqSize;
+        const midDy = ((vr + nvr) / 2 - finalVr) * sqSize - sqSize * (isCapture ? 0.22 : 0.1);
+        const midScale = isCapture ? 1.14 : 1.07;
+        keyframes.push({
+          transform: `translate(${midDx.toFixed(1)}px, ${midDy.toFixed(1)}px) scale(${midScale})`,
+          offset: (i + 0.48) / hopCount,
+        });
+      }
+    }
+
+    const moveAnim = destPieceEl.animate(keyframes, {
+      duration: totalMoveDuration,
+      easing: isCapture ? "cubic-bezier(0.25, 0.9, 0.35, 1)" : "cubic-bezier(0.22, 1, 0.36, 1)",
+    });
+
+    if (!isCapture && !lastMove.promoted) {
+      this.onSoundEvent?.({ type: "move", color: moverColor });
+    }
+
+    // Spawn transient captured ghosts so each jumped rock/bottle-cap pops & sweeps away as crossed
+    captured.forEach((capCoord, idx) => {
+      const prevPiece = prevState?.board?.[capCoord[0]]?.[capCoord[1]];
+      const capSq = this.container.querySelector(`[data-coord="${coordKey(capCoord)}"]`);
+      if (!prevPiece || !capSq) return;
+
+      const ghost = document.createElement("span");
+      ghost.className = `piece piece-${prevPiece.color} captured-ghost${
+        prevPiece.rank === "king" ? " piece-king" : ""
+      }`;
+      ghost.appendChild(createStreetPieceSvg(prevPiece));
+      capSq.appendChild(ghost);
+
+      const impactDelay = Math.round(idx * hopDuration + hopDuration * 0.46);
+      const timerId = window.setTimeout(() => {
+        this.onSoundEvent?.({ type: "capture", color: moverColor, hopIndex: idx });
+        const tossX = (idx % 2 === 0 ? 1 : -1) * sqSize * 0.18;
+        const popAnim = ghost.animate(
+          [
+            { transform: "translate(0px, 0px) scale(1) rotate(0deg)", opacity: 1 },
+            {
+              transform: `translate(${(tossX * 0.5).toFixed(1)}px, ${(-sqSize * 0.2).toFixed(
+                1
+              )}px) scale(1.12) rotate(${idx % 2 === 0 ? 12 : -12}deg)`,
+              opacity: 0.92,
+              offset: 0.35,
+            },
+            {
+              transform: `translate(${tossX.toFixed(1)}px, ${(sqSize * 0.1).toFixed(
+                1
+              )}px) scale(0.86) rotate(${idx % 2 === 0 ? 22 : -22}deg)`,
+              opacity: 0,
+            },
+          ],
+          {
+            duration: 210,
+            easing: "cubic-bezier(0.4, 0, 1, 1)",
+            fill: "forwards",
+          }
+        );
+        popAnim.onfinish = () => ghost.remove();
+      }, impactDelay);
+      this._animTimers.push(timerId);
+    });
+
+    moveAnim.onfinish = () => {
+      destSquare.classList.remove("is-animating-dest");
+
+      if (lastMove.promoted) {
+        this.onSoundEvent?.({ type: "promote", color: moverColor });
+        destPieceEl.animate(
+          [
+            { transform: "scale(1)" },
+            { transform: "scaleX(0.28) scaleY(1.16)", offset: 0.38 },
+            { transform: "scale(1.13)", offset: 0.72 },
+            { transform: "scale(1)" },
+          ],
+          {
+            duration: 320,
+            easing: "cubic-bezier(0.34, 1.4, 0.64, 1)",
+          }
+        );
+      }
+
+      if (nextState.status === "finished" && nextState.winner) {
+        this._celebrateWinnerPieces(nextState.winner);
+      }
+    };
+  }
+
+  _celebrateWinnerPieces(winnerColor) {
+    if (prefersReducedMotion() || typeof Element.prototype.animate !== "function") return;
+    const winners = this.container.querySelectorAll(`.piece-${winnerColor}:not(.captured-ghost)`);
+    winners.forEach((el, idx) => {
+      const delay = Math.min(idx * 28, 220);
+      el.animate(
+        [
+          { transform: "translateY(0px) scale(1)" },
+          { transform: "translateY(-5px) scale(1.08)", offset: 0.45 },
+          { transform: "translateY(0px) scale(1)" },
+        ],
+        {
+          duration: 340,
+          delay,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        }
+      );
+    });
   }
 
   render() {
@@ -285,9 +479,9 @@ export class BoardController {
 
         const labelParts = [`Row ${r + 1}, column ${c + 1}`];
         if (piece) {
-          const colorName = piece.color === "white" ? "light" : "dark";
-          const rankName = piece.rank === "king" ? "king" : "man";
-          labelParts.push(`${colorName} ${rankName}`);
+          const materialName = piece.color === "white" ? "bottle cap (light)" : "street rock (dark)";
+          const rankName = piece.rank === "king" ? "Dama king" : "piece";
+          labelParts.push(`${materialName} ${rankName}`);
           if (isMyTurn && movableOrigins.has(key)) {
             labelParts.push("movable");
           }
@@ -296,9 +490,8 @@ export class BoardController {
           pieceEl.className = `piece piece-${piece.color}${
             piece.rank === "king" ? " piece-king" : ""
           }`;
-          if (piece.rank === "king") {
-            pieceEl.appendChild(createCrownSvg());
-          }
+          pieceEl.dataset.pieceId = piece.id || "";
+          pieceEl.appendChild(createStreetPieceSvg(piece));
           btn.appendChild(pieceEl);
         } else {
           labelParts.push("empty");

@@ -1,4 +1,6 @@
 import { ApiError, createRoom, getPublicRoom, joinRoom } from "./api.js";
+import { SoundEngine } from "./audio.js";
+import { getAutoCafeReaction, getTauntById } from "./banter.js";
 import { BoardController } from "./board.js";
 import { RoomSocket } from "./socket.js";
 import { UIController } from "./ui.js";
@@ -58,9 +60,13 @@ function parseRoomCodeFromPath(pathname) {
 class DamaApp {
   constructor() {
     this.ui = new UIController();
+    this.sound = new SoundEngine();
     this.socket = null;
     this.currentSnapshot = null;
     this.activeRoomCode = null;
+
+    this.ui.setSoundMuted(this.sound.isMuted());
+    this.ui.initTauntBar((tauntId) => this._sendTaunt(tauntId));
 
     this.board = new BoardController({
       container: document.getElementById("dama-board"),
@@ -72,10 +78,44 @@ class DamaApp {
         this.ui.updateStepControls(sel);
       },
       onIllegalHint: (msg) => this.ui.setGameError(msg),
+      onSoundEvent: (ev) => this._handleSoundEvent(ev),
     });
 
     this._bindEvents();
     this._bootFromLocation();
+  }
+
+  _handleSoundEvent(ev) {
+    if (!ev) return;
+    switch (ev.type) {
+      case "select":
+        this.sound.playSelect(ev.color);
+        break;
+      case "move":
+        this.sound.playMove(ev.color);
+        break;
+      case "capture":
+        this.sound.playCaptureHop(ev.color, ev.hopIndex || 0);
+        break;
+      case "promote":
+        this.sound.playPromote(ev.color);
+        break;
+      case "illegal":
+        this.sound.playIllegal();
+        break;
+      default:
+        break;
+    }
+  }
+
+  _sendTaunt(tauntId) {
+    if (!this.socket) return false;
+    const sent = this.socket.sendTaunt(tauntId);
+    if (!sent) {
+      this.ui.setGameError("Still reconnecting—try your taunt again in a moment.");
+      return false;
+    }
+    return true;
   }
 
   _bindEvents() {
@@ -84,6 +124,11 @@ class DamaApp {
     if (savedName && nameInput) {
       nameInput.value = savedName;
     }
+
+    document.getElementById("btn-sound-toggle")?.addEventListener("click", () => {
+      const muted = this.sound.toggleMute();
+      this.ui.setSoundMuted(muted);
+    });
 
     document.getElementById("btn-create-room")?.addEventListener("click", () => {
       this._handleCreateRoom();
@@ -380,12 +425,25 @@ class DamaApp {
       case "move_applied":
       case "game_finished":
         if (msg.type === "player_joined") {
-          this.ui.showToast("Your friend joined—match started!");
+          this.sound.playTaunt();
+          this.ui.showToast("Your friend joined—Yallah bsmillah!");
         }
         if (msg.room) {
           this._applyRoomSnapshot(msg.room);
         }
         break;
+
+      case "taunt_sent": {
+        const taunt = getTauntById(msg.taunt_id);
+        if (taunt) {
+          this.sound.playTaunt();
+          const myColor = this.currentSnapshot?.your_color || "white";
+          const side = msg.from_color === myColor ? "self" : "opp";
+          const sender = msg.sender_name || (side === "self" ? "You" : "Opponent");
+          this.ui.showSpeechBubble(side, sender, taunt.bubble);
+        }
+        break;
+      }
 
       case "player_disconnected":
         if (msg.room) {
@@ -402,6 +460,7 @@ class DamaApp {
 
       case "rematch_status":
         if (msg.started) {
+          this.sound.playTaunt();
           this.ui.showToast("Rematch started—sides swapped!");
         }
         if (msg.room) {
@@ -410,6 +469,7 @@ class DamaApp {
         break;
 
       case "move_rejected":
+        this.sound.playIllegal();
         this.ui.setGameError(msg.message || "Illegal move.");
         if (msg.room) {
           this._applyRoomSnapshot(msg.room);
@@ -420,7 +480,10 @@ class DamaApp {
         break;
 
       case "error":
-        this.ui.setGameError(msg.message || "Protocol error.");
+        if (msg.code !== "taunt_cooldown") {
+          this.sound.playIllegal();
+          this.ui.setGameError(msg.message || "Protocol error.");
+        }
         break;
 
       default:
@@ -429,13 +492,37 @@ class DamaApp {
   }
 
   _applyRoomSnapshot(snapshot) {
+    const prevSnapshot = this.currentSnapshot;
+    const sameRoom = prevSnapshot && prevSnapshot.room_code === snapshot.room_code;
+    const prevGame = sameRoom ? prevSnapshot.game : null;
+    const myColor = snapshot.your_color || "white";
+
     this.currentSnapshot = snapshot;
     if (snapshot.game.status === "waiting") {
       this.ui.renderWaitingRoom(snapshot);
       return;
     }
+
     this.ui.renderGameRoom(snapshot);
-    this.board.update(snapshot.game, snapshot.your_color || "white");
+    this.board.update(snapshot.game, myColor);
+
+    if (prevGame) {
+      const reaction = getAutoCafeReaction({
+        prevGame,
+        nextGame: snapshot.game,
+        myColor,
+      });
+      if (reaction) {
+        this.ui.showCafeCallout(reaction);
+      }
+
+      if (prevGame.status !== "finished" && snapshot.game.status === "finished") {
+        const iWon = snapshot.game.winner === myColor;
+        window.setTimeout(() => {
+          this.sound.playWin(iWon);
+        }, 240);
+      }
+    }
   }
 }
 
