@@ -1,0 +1,23 @@
+# Virtual environments & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local secrets & environment files
+.env
+.env.*
+
+# Git, IDE, tests, and docs not needed at runtime
+.git/
+.gitignore
+.vscode/
+.idea/
+tests/
+README.md
+Dockerfile
+.dockerignore
