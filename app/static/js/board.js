@@ -241,7 +241,7 @@ export class BoardController {
     if (landings.length === 0) return;
 
     const captured = lastMove.captured || [];
-    const moverColor = lastMove.color || "white";
+    const moverColor = lastMove.by || "white";
     const isCapture = captured.length > 0;
 
     // Trigger immediate audio when reduced motion is enabled

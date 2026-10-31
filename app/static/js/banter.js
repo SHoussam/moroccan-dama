@@ -75,9 +75,10 @@ export function getAutoCafeReaction({ prevGame, nextGame, myColor }) {
 
   if (prevGame && nextGame.revision > prevGame.revision && lastMove) {
     const capCount = lastMove.captured ? lastMove.captured.length : 0;
+    const moverColor = lastMove.by || "white";
 
     if (lastMove.promoted) {
-      return lastMove.color === "white"
+      return moverColor === "white"
         ? "Qleb l'bouchona! Wllat Dama—triq mftou7a! 👑"
         : "Rekkeb l'7ejra! Wllat Dama—triq mftou7a! 👑";
     }
@@ -87,7 +88,7 @@ export function getAutoCafeReaction({ prevGame, nextGame, myColor }) {
     }
 
     if (capCount === 1) {
-      return lastMove.color === "white"
+      return moverColor === "white"
         ? "Bss7a! Taret l'7ejra men l'tabla! 💥"
         : "Bss7a! Taret l'bouchona men l'tabla! 💥";
     }

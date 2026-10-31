@@ -154,6 +154,9 @@ export class UIController {
   }
 
   clearTransientBanter() {
+    window.clearTimeout(this._bubbleTimers.opp);
+    window.clearTimeout(this._bubbleTimers.self);
+    window.clearTimeout(this._calloutTimer);
     for (const id of ["opp-speech-bubble", "self-speech-bubble", "cafe-callout"]) {
       const el = byId(id);
       if (el) {
