@@ -1,7 +1,8 @@
+import contextlib
+import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-import time
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -63,10 +64,10 @@ class ConnectionHub:
             seat_id=seat_id, token=token, websocket=websocket
         )
         if previous is not None and previous.websocket is not websocket:
-            try:
-                await previous.websocket.close(code=4000, reason="Superseded by new connection")
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                await previous.websocket.close(
+                    code=4000, reason="Superseded by new connection"
+                )
 
     def unregister(self, room_code: str, seat_id: str, websocket: WebSocket) -> bool:
         """Remove socket only if it is still the active socket for `seat_id`."""
@@ -82,10 +83,8 @@ class ConnectionHub:
         return True
 
     async def send_safe(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
-        try:
+        with contextlib.suppress(Exception):
             await websocket.send_json(payload)
-        except Exception:
-            pass
 
     async def broadcast_personalized(
         self,
@@ -274,10 +273,10 @@ async def room_websocket_endpoint(
                 await hub.broadcast_personalized(
                     canonical_code,
                     room_manager,
-                    lambda snap: {
+                    lambda snap, move=move_payload, rev=new_revision: {
                         "type": "move_applied",
-                        "move": move_payload,
-                        "revision": new_revision,
+                        "move": move,
+                        "revision": rev,
                         "room": snap.model_dump(mode="json", by_alias=True),
                     },
                 )
@@ -305,13 +304,15 @@ async def room_websocket_endpoint(
                     )
                     continue
 
+                winner = resigned_snap.game.winner
+                finish_reason = resigned_snap.game.finish_reason
                 await hub.broadcast_personalized(
                     canonical_code,
                     room_manager,
-                    lambda snap: {
+                    lambda snap, w=winner, r=finish_reason: {
                         "type": "game_finished",
-                        "winner": resigned_snap.game.winner,
-                        "finish_reason": resigned_snap.game.finish_reason,
+                        "winner": w,
+                        "finish_reason": r,
                         "room": snap.model_dump(mode="json", by_alias=True),
                     },
                 )
@@ -332,9 +333,9 @@ async def room_websocket_endpoint(
                 await hub.broadcast_personalized(
                     canonical_code,
                     room_manager,
-                    lambda snap: {
+                    lambda snap, started=rematch_res.started: {
                         "type": "rematch_status",
-                        "started": rematch_res.started,
+                        "started": started,
                         "requested_by": snap.rematch_requested_by,
                         "room": snap.model_dump(mode="json", by_alias=True),
                     },

@@ -44,7 +44,7 @@ def test_create_room_and_join_assigns_opposite_colors_and_hides_tokens():
 def test_third_player_rejected_but_existing_token_can_rejoin_idempotently():
     mgr = RoomManager(clock=FakeClock())
     p1 = mgr.create_room("Houssam")
-    p2 = mgr.join_room(p1.room_code, "Friend")
+    mgr.join_room(p1.room_code, "Friend")
 
     with pytest.raises(RoomError) as exc_info:
         mgr.join_room(p1.room_code, "Intruder")
@@ -60,6 +60,7 @@ def test_player_name_validation_and_arabic_names_supported():
     mgr = RoomManager(clock=FakeClock())
     arabic_room = mgr.create_room("  حسام  ")
     snap = mgr.get_public_snapshot(arabic_room.room_code)
+    assert snap.players["white"] is not None
     assert snap.players["white"].name == "حسام"
 
     with pytest.raises(RoomError) as exc_empty:
@@ -147,6 +148,7 @@ def test_disconnect_grace_period_preserves_seat_and_reconnect_restores_it():
     mgr.mark_connected(p1.room_code, p2.player_token)
 
     snap_disc = mgr.mark_disconnected(p1.room_code, p2.player_token)
+    assert snap_disc.players["black"] is not None
     assert snap_disc.players["black"].connected is False
     assert snap_disc.game.status == "active"
     assert snap_disc.game.winner is None
@@ -159,6 +161,7 @@ def test_disconnect_grace_period_preserves_seat_and_reconnect_restores_it():
 
     # Reconnect with original token restores live seat
     snap_reconn = mgr.mark_connected(p1.room_code, p2.player_token)
+    assert snap_reconn.players["black"] is not None
     assert snap_reconn.players["black"].connected is True
     assert snap_reconn.game.status == "active"
 

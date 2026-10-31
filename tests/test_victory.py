@@ -26,7 +26,8 @@ def test_win_when_last_opponent_piece_captured():
 def test_win_when_opponent_has_no_legal_moves():
     # Black has one man at (6, 1) Moving downward to row 7:
     # (7, 0) is occupied by white king or friendly blocker? Wait: if (7, 0) and (7, 2) are blocked:
-    # Put Black man at (5, 0) moving down to (6, 1), and White man at (7, 2) moves to (6, 1) blocking Black!
+    # Put Black man at (5, 0) moving down to (6, 1), and White man at (7, 2) moves to (6, 1)
+    # blocking Black!
     # Wait: if White moves (7, 2) -> (6, 1), can Black jump (6, 1) to (7, 2)?
     # Not if (7, 2) is ALSO occupied by another White piece!
     state = create_custom_game_state(

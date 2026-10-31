@@ -6,7 +6,6 @@ from app.game.models import (
     Coord,
     LegalMove,
     Piece,
-    Rank,
     forward_row_delta,
     is_in_bounds,
     is_playable_square,
@@ -267,6 +266,22 @@ def _captured_king_count(board: list[list[Piece | None]], captured: list[Coord])
     return count
 
 
+def _generate_all_quiet_moves(
+    board: list[list[Piece | None]],
+    color: Color,
+    config: RulesConfig,
+) -> list[LegalMove]:
+    quiet_moves: list[LegalMove] = []
+    for r in range(config.board_size):
+        for c in range(config.board_size):
+            piece = board[r][c]
+            if piece is not None and piece.color == color:
+                quiet_moves.extend(
+                    _generate_quiet_moves_for_piece(board, (r, c), piece, config)
+                )
+    return quiet_moves
+
+
 def get_legal_moves(
     board: list[list[Piece | None]],
     color: Color,
@@ -275,7 +290,6 @@ def get_legal_moves(
     """Generate all legal complete turns for `color` under `config`."""
     size = config.board_size
     capture_moves: list[LegalMove] = []
-    quiet_moves: list[LegalMove] = []
 
     for r in range(size):
         for c in range(size):
@@ -331,17 +345,6 @@ def get_legal_moves(
         if config.mandatory_capture:
             return filtered
 
-        for r in range(size):
-            for c in range(size):
-                piece = board[r][c]
-                if piece is not None and piece.color == color:
-                    quiet_moves.extend(_generate_quiet_moves_for_piece(board, (r, c), piece, config))
-        return [*filtered, *quiet_moves]
+        return [*filtered, *_generate_all_quiet_moves(board, color, config)]
 
-    for r in range(size):
-        for c in range(size):
-            piece = board[r][c]
-            if piece is not None and piece.color == color:
-                quiet_moves.extend(_generate_quiet_moves_for_piece(board, (r, c), piece, config))
-
-    return quiet_moves
+    return _generate_all_quiet_moves(board, color, config)

@@ -1,6 +1,11 @@
 import pytest
 
-from app.game.engine import IllegalMoveError, apply_move, create_custom_game_state, create_initial_game_state
+from app.game.engine import (
+    IllegalMoveError,
+    apply_move,
+    create_custom_game_state,
+    create_initial_game_state,
+)
 from app.game.models import MoveAttempt
 from app.game.rules import get_legal_moves
 

@@ -1,5 +1,5 @@
 import json
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
@@ -53,18 +53,7 @@ TauntId = Literal[
     "ach_had_l3eb",
 ]
 
-ALLOWED_TAUNT_IDS: frozenset[str] = frozenset(
-    {
-        "hez_yeddik",
-        "chreb_atay",
-        "kul_wla_nkul",
-        "m3allem",
-        "fin_ghadi_7ejra",
-        "bouchona_dama",
-        "3ti_lkhater",
-        "ach_had_l3eb",
-    }
-)
+ALLOWED_TAUNT_IDS: frozenset[str] = frozenset(get_args(TauntId))
 
 
 class SendTauntMessage(BaseModel):

@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from app.game.config import DEFAULT_RULES_CONFIG, RulesConfig
 from app.game.models import (
     Color,
@@ -84,13 +86,13 @@ def create_initial_game_state(
 
 
 def create_custom_game_state(
-    pieces: dict[Coord, tuple[Color, Rank] | Piece],
+    pieces: Mapping[Coord, tuple[Color, Rank] | Piece],
     current_turn: Color = "white",
     config: RulesConfig = DEFAULT_RULES_CONFIG,
     status: GameStatus = "active",
     revision: int = 0,
     move_number: int = 0,
-    captured: dict[Color, int] | None = None,
+    captured: Mapping[Color, int] | None = None,
 ) -> GameState:
     """Create an explicit board fixture for unit and integration testing."""
     size = config.board_size
@@ -199,7 +201,7 @@ def apply_move(state: GameState, move: MoveAttempt) -> GameState:
     if matched is None:
         has_captures = any(lm.is_capture for lm in legal_moves)
         if has_captures:
-            # Distinguish trying a quiet move when capture is mandatory vs incomplete/non-maximal capture
+            # Distinguish a quiet step when capture is mandatory vs an incomplete capture
             dr = abs(move.landings[0][0] - from_r)
             if len(move.landings) == 1 and dr == 1:
                 raise IllegalMoveError(
@@ -238,46 +240,28 @@ def apply_move(state: GameState, move: MoveAttempt) -> GameState:
         promoted=promoted,
     )
 
-    remaining_opp = count_pieces(new_board, opp_color)
-    if remaining_opp == 0:
-        return GameState(
-            board=new_board,
-            current_turn=opp_color,
-            status="finished",
-            winner=state.current_turn,
-            finish_reason="no_pieces",
-            captured=new_captured,
-            move_number=state.move_number + 1,
-            revision=state.revision + 1,
-            last_move=last_move,
-            rules_config=config,
-            legal_moves=[],
-            mandatory_capture=False,
-        )
-
-    next_legal = get_legal_moves(new_board, opp_color, config)
-    if not next_legal:
-        return GameState(
-            board=new_board,
-            current_turn=opp_color,
-            status="finished",
-            winner=state.current_turn,
-            finish_reason="no_legal_moves",
-            captured=new_captured,
-            move_number=state.move_number + 1,
-            revision=state.revision + 1,
-            last_move=last_move,
-            rules_config=config,
-            legal_moves=[],
-            mandatory_capture=False,
-        )
+    if count_pieces(new_board, opp_color) == 0:
+        next_status: GameStatus = "finished"
+        winner: Color | None = state.current_turn
+        finish_reason: FinishReason | None = "no_pieces"
+        next_legal = []
+    else:
+        next_legal = get_legal_moves(new_board, opp_color, config)
+        if not next_legal:
+            next_status = "finished"
+            winner = state.current_turn
+            finish_reason = "no_legal_moves"
+        else:
+            next_status = "active"
+            winner = None
+            finish_reason = None
 
     return GameState(
         board=new_board,
         current_turn=opp_color,
-        status="active",
-        winner=None,
-        finish_reason=None,
+        status=next_status,
+        winner=winner,
+        finish_reason=finish_reason,
         captured=new_captured,
         move_number=state.move_number + 1,
         revision=state.revision + 1,

@@ -1,7 +1,7 @@
 import logging
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -11,7 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.rooms import router as rooms_router
 from app.game.config import DEFAULT_RULES_CONFIG, RulesConfig
-from app.realtime.websocket import ConnectionHub, router as ws_router
+from app.realtime.websocket import ConnectionHub
+from app.realtime.websocket import router as ws_router
 from app.rooms.manager import RoomError, RoomManager
 
 load_dotenv()
@@ -79,7 +80,7 @@ def create_app(
 
     application = FastAPI(
         title="Moroccan Dama — Private Online Multiplayer",
-        version="1.0.0",
+        version="2.0.0",
         docs_url="/api/docs" if app_env != "production" else None,
         redoc_url=None,
     )

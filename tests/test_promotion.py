@@ -1,6 +1,6 @@
 from app.game.config import RulesConfig
 from app.game.engine import apply_move, create_custom_game_state
-from app.game.models import MoveAttempt
+from app.game.models import Color, Coord, MoveAttempt, Rank
 
 
 def test_man_promotes_on_reaching_far_row_by_normal_move():
@@ -33,7 +33,7 @@ def test_promotion_during_capture_stops_turn_by_default():
     # Another black piece sits at (1, 4) with (2, 5) empty.
     # In initial Moroccan Dama profile (promote_mid_capture_stops_turn=True),
     # the man crowns at (0, 3) and MUST stop rather than continuing backward as a king.
-    pieces = {
+    pieces: dict[Coord, tuple[Color, Rank]] = {
         (2, 1): ("white", "man"),
         (1, 2): ("black", "man"),
         (1, 4): ("black", "man"),
@@ -57,7 +57,7 @@ def test_promotion_during_capture_stops_turn_by_default():
 
 
 def test_promotion_during_capture_continues_when_configured():
-    pieces = {
+    pieces: dict[Coord, tuple[Color, Rank]] = {
         (2, 1): ("white", "man"),
         (1, 2): ("black", "man"),
         (1, 4): ("black", "man"),

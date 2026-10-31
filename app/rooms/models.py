@@ -79,9 +79,9 @@ class Room:
     room_code: str
     created_at: float
     updated_at: float
+    game_state: GameState
     rules_config: RulesConfig = DEFAULT_RULES_CONFIG
     seats: list[PlayerSeat] = field(default_factory=list)
-    game_state: GameState = field(default_factory=GameState)  # type: ignore[arg-type]
     rematch_requests: set[str] = field(default_factory=set)  # stores seat_ids
     match_number: int = 1
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -91,11 +91,5 @@ class Room:
             return None
         for seat in self.seats:
             if seat.token == token:
-                return seat
-        return None
-
-    def seat_by_color(self, color: Color) -> PlayerSeat | None:
-        for seat in self.seats:
-            if seat.color == color:
                 return seat
         return None

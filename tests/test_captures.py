@@ -2,7 +2,7 @@ import pytest
 
 from app.game.config import RulesConfig
 from app.game.engine import IllegalMoveError, apply_move, create_custom_game_state
-from app.game.models import MoveAttempt
+from app.game.models import Color, Coord, MoveAttempt, Rank
 from app.game.rules import get_legal_moves
 
 
@@ -141,7 +141,7 @@ def test_maximum_capture_rejects_shorter_sequence():
 def test_equal_capture_tiebreak_none_vs_prefer_kings():
     # White man at (5, 2) can jump left over a black man at (4, 1) -> (3, 0)
     # OR jump right over a black king at (4, 3) -> (3, 4)
-    pieces = {
+    pieces: dict[Coord, tuple[Color, Rank]] = {
         (5, 2): ("white", "man"),
         (4, 1): ("black", "man"),
         (4, 3): ("black", "king"),

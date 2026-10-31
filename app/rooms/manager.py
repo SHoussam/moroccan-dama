@@ -1,8 +1,8 @@
-from collections.abc import Callable
 import re
 import secrets
 import time
 import unicodedata
+from collections.abc import Callable
 
 from app.game.config import DEFAULT_RULES_CONFIG, RulesConfig
 from app.game.engine import (
@@ -117,7 +117,9 @@ class RoomManager:
             return (now - room.updated_at) > self.finished_room_ttl_seconds
         # Active room: expire if all seats are disconnected past grace period
         if room.seats and all(not s.connected for s in room.seats):
-            disconnect_times = [s.disconnected_at for s in room.seats if s.disconnected_at is not None]
+            disconnect_times = [
+                s.disconnected_at for s in room.seats if s.disconnected_at is not None
+            ]
             if disconnect_times and (now - max(disconnect_times)) > self.disconnect_grace_seconds:
                 return True
             if not disconnect_times and (now - room.updated_at) > self.waiting_room_ttl_seconds:
@@ -166,7 +168,7 @@ class RoomManager:
             remaining: int | None = None
             if not seat.connected and seat.disconnected_at is not None:
                 elapsed = now - seat.disconnected_at
-                remaining = max(0, int(round(self.disconnect_grace_seconds - elapsed)))
+                remaining = max(0, round(self.disconnect_grace_seconds - elapsed))
             players[seat.color] = PlayerPublicView(
                 name=seat.name,
                 color=seat.color,

@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-import pytest
 
 from app.main import create_app
 
@@ -120,6 +119,7 @@ def test_websocket_realtime_moves_validation_disconnect_reconnect_resign_and_rem
                 m2 = _drain_until_type(ws2, "move_applied")
                 assert m1["revision"] == rev + 1
                 assert m2["revision"] == rev + 1
+                assert m1["move"]["by"] == "white"
                 assert m1["move"]["from"] == [5, 0]
                 assert m1["move"]["landings"] == [[4, 1]]
                 assert m1["room"]["your_color"] == "white"
@@ -214,6 +214,7 @@ def test_spa_routes_oversized_payload_and_reconnect_race_safety():
 
 def test_token_redacting_log_filter_scrubs_sensitive_ws_urls():
     import logging
+
     from app.main import TokenRedactingFilter
 
     flt = TokenRedactingFilter()

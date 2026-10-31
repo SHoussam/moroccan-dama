@@ -1,8 +1,6 @@
-import pytest
-
 from app.game.config import RulesConfig
-from app.game.engine import IllegalMoveError, apply_move, create_custom_game_state
-from app.game.models import MoveAttempt
+from app.game.engine import create_custom_game_state
+from app.game.models import Color, Coord, Rank
 from app.game.rules import get_legal_moves
 
 
@@ -39,7 +37,8 @@ def test_flying_king_capture_any_empty_square_beyond_and_blocker():
         pieces={
             (7, 0): ("white", "king"),
             (4, 3): ("black", "man"),
-            (1, 6): ("black", "man"),  # second enemy further along same diagonal blocks behind (2, 5)
+            # Second enemy further along the same diagonal blocks squares behind (2, 5)
+            (1, 6): ("black", "man"),
         },
         current_turn="white",
     )
@@ -53,7 +52,7 @@ def test_flying_king_capture_any_empty_square_beyond_and_blocker():
 
 
 def test_flying_king_single_capture_multiple_landing_choices_and_adjacent_config():
-    pieces = {
+    pieces: dict[Coord, tuple[Color, Rank]] = {
         (7, 0): ("white", "king"),
         (5, 2): ("black", "man"),
         (1, 6): ("white", "man"),  # friendly piece blocks at (1, 6)
@@ -100,9 +99,9 @@ def test_king_cannot_jump_two_adjacent_enemies_or_capture_same_piece_twice():
     # Jump 1: enemy at (4, 1) -> lands (2, 3)
     # Jump 2: enemy at (3, 4) -> lands (4, 5)
     # Jump 3: enemy at (5, 4) -> lands (6, 3)
-    # Jump 4: enemy at (5, 2) -> lands (4, 1)? NO! (4, 1) still holds the captured piece from Jump 1!
-    # Nor can it slide through (4, 1) to (3, 0)! It CAN land on (3, 0) ONLY if (4, 1) weren't there,
-    # so with captured_pieces_block_during_sequence=True, Jump 4 cannot land on or pass through (4, 1)!
+    # Jump 4: enemy at (5, 2) -> lands (4, 1)? NO! (4, 1) still holds the Jump 1 hurdle!
+    # Nor can it slide through (4, 1) to (3, 0)! It CAN land on (3, 0) ONLY if (4, 1) weren't
+    # there; with captured_pieces_block_during_sequence=True, Jump 4 cannot touch/pass (4, 1)!
     state_turkish = create_custom_game_state(
         pieces={
             (5, 0): ("white", "king"),
