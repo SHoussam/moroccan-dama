@@ -107,7 +107,7 @@ def create_custom_game_state(
             prefix = "w" if p_color == "white" else "b"
             pid = f"{prefix}{counters[p_color]}"
             counters[p_color] += 1
-            board[r][c] = Piece(id=pid, color=p_color, rank="king" if p_rank == "king" else "man")
+            board[r][c] = Piece(id=pid, color=p_color, rank=p_rank)
 
     legal = get_legal_moves(board, current_turn, config) if status == "active" else []
     mandatory = any(m.is_capture for m in legal)
