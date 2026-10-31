@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#3c2618" />
+  <meta name="description" content="Play a private online match of Moroccan Dama (الضامة المغربية) with a friend via invite link." />
+  <title>Moroccan Dama — الضامة</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233f2718'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%23fdfaf2' stroke='%23c59746' stroke-width='3'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Toast / transient feedback region -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Connection banner when own socket is reconnecting -->
+    <div id="net-banner" class="net-banner hidden" role="status" aria-live="polite">
+      <span class="net-dot"></span>
+      <span id="net-banner-text">Reconnecting to room…</span>
+    </div>
+
+    <!-- SCREEN 1: HOME -->
+    <main id="screen-home" class="screen screen-card">
+      <header class="brand-header">
+        <div class="brand-emblem" aria-hidden="true">
+          <span class="emblem-disc emblem-light"></span>
+          <span class="emblem-disc emblem-dark"></span>
+        </div>
+        <p class="brand-arabic" lang="ar" dir="rtl">الضامة المغربية</p>
+        <h1 class="brand-title">Moroccan Dama</h1>
+        <p class="brand-subtitle">A private tabletop match for two friends. Create a room and share the link—no account needed.</p>
+      </header>
+
+      <div id="home-error" class="alert-box alert-error hidden" role="alert"></div>
+
+      <section class="card-panel" aria-labelledby="name-section-label">
+        <label id="name-section-label" for="player-name-input" class="field-label">Your display name</label>
+        <input
+          id="player-name-input"
+          class="text-input"
+          type="text"
+          maxlength="20"
+          autocomplete="nickname"
+          placeholder="e.g. Houssam or حسام"
+          required
+        />
+        <button id="btn-create-room" type="button" class="btn btn-primary btn-block">
+          Create private game
+        </button>
+      </section>
+
+      <div class="divider" role="separator"><span>or join with a code</span></div>
+
+      <form id="join-code-form" class="card-panel join-row" novalidate>
+        <div class="join-code-field">
+          <label for="room-code-input" class="sr-only">Room code</label>
+          <input
+            id="room-code-input"
+            class="text-input code-input"
+            type="text"
+            maxlength="12"
+            autocapitalize="characters"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="ROOM CODE"
+          />
+        </div>
+        <button id="btn-join-code" type="submit" class="btn btn-secondary">
+          Join room
+        </button>
+      </form>
+
+      <footer class="home-footer">
+        <button id="btn-open-rules-home" type="button" class="link-btn">
+          View Moroccan Dama rules
+        </button>
+      </footer>
+    </main>
+
+    <!-- INVITE JOIN PROMPT (when opening /game/{code} directly as Player 2) -->
+    <main id="screen-join-invite" class="screen screen-card hidden">
+      <header class="brand-header compact">
+        <p class="brand-arabic" lang="ar" dir="rtl">دعوة للعب الضامة</p>
+        <h1 class="brand-title">Join Private Match</h1>
+        <p id="invite-host-text" class="brand-subtitle">Your friend is waiting in room <strong id="invite-code-badge">------</strong>.</p>
+      </header>
+
+      <div id="invite-error" class="alert-box alert-error hidden" role="alert"></div>
+
+      <form id="invite-join-form" class="card-panel" novalidate>
+        <label for="invite-name-input" class="field-label">Choose your display name</label>
+        <input
+          id="invite-name-input"
+          class="text-input"
+          type="text"
+          maxlength="20"
+          autocomplete="nickname"
+          placeholder="Enter your name"
+          required
+        />
+        <div class="stack-actions">
+          <button id="btn-accept-invite" type="submit" class="btn btn-primary btn-block">
+            Join match
+          </button>
+          <button id="btn-invite-home" type="button" class="btn btn-ghost btn-block">
+            Back to home
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <!-- SCREEN 2: WAITING ROOM -->
+    <main id="screen-waiting" class="screen screen-card hidden">
+      <header class="brand-header compact">
+        <span class="status-pill waiting-pill">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          Waiting for your friend…
+        </span>
+        <h1 class="brand-title">Private Room Ready</h1>
+        <p class="brand-subtitle">Send this link or room code to your friend to start immediately.</p>
+      </header>
+
+      <section class="card-panel invite-box" aria-label="Room invitation details">
+        <div class="room-code-display">
+          <span class="room-code-caption">Room code</span>
+          <div class="room-code-row">
+            <strong id="waiting-room-code" class="room-code-value">------</strong>
+            <button id="btn-copy-code" type="button" class="btn btn-small btn-secondary">Copy code</button>
+          </div>
+        </div>
+
+        <div class="invite-url-group">
+          <label for="waiting-invite-url" class="room-code-caption">Invitation link</label>
+          <input id="waiting-invite-url" class="text-input url-readonly" type="text" readonly />
+        </div>
+
+        <div class="share-actions">
+          <button id="btn-share-native" type="button" class="btn btn-primary hidden">
+            Share invitation
+          </button>
+          <button id="btn-copy-link" type="button" class="btn btn-primary">
+            Copy invite link
+          </button>
+        </div>
+      </section>
+
+      <div class="waiting-meta">
+        <span id="waiting-seat-info" class="seat-note">Playing as Light (moves first)</span>
+        <button id="btn-leave-waiting" type="button" class="link-btn">Leave room</button>
+      </div>
+    </main>
+
+    <!-- SCREEN 3 & 4: ACTIVE GAME + GAME OVER -->
+    <main id="screen-game" class="screen game-layout hidden">
+      <!-- Top bar: Opponent -->
+      <section class="player-bar opponent-bar" aria-label="Opponent status">
+        <div class="player-identity">
+          <span id="opp-piece-badge" class="piece-mini piece-black" aria-hidden="true"></span>
+          <div class="player-name-wrap">
+            <div class="player-name-line">
+              <span id="opp-name" class="player-name">Opponent</span>
+              <span id="opp-conn-badge" class="conn-dot conn-online" title="Connected"></span>
+            </div>
+            <span id="opp-status-sub" class="player-sub">Connected</span>
+          </div>
+        </div>
+        <div class="captured-tray" aria-label="Pieces captured by opponent">
+          <span class="captured-label">Captured</span>
+          <strong id="opp-captured-count" class="captured-count">0</strong>
+        </div>
+      </section>
+
+      <!-- Contextual Turn / Mandatory Capture / Multi-step / Game Over strip -->
+      <section class="board-hud-strip" aria-live="polite">
+        <div id="turn-banner" class="turn-banner">
+          <span id="turn-disc" class="turn-disc piece-white" aria-hidden="true"></span>
+          <span id="turn-text" class="turn-text">White's turn</span>
+        </div>
+
+        <div id="mandatory-badge" class="mandatory-badge hidden" role="status">
+          <span class="mandatory-icon" aria-hidden="true">◆</span>
+          <span>Mandatory capture</span>
+        </div>
+
+        <div id="step-controls" class="step-controls hidden">
+          <span id="step-prompt" class="step-prompt">Jump 1 selected — tap next square</span>
+          <button id="btn-cancel-steps" type="button" class="btn btn-tiny btn-secondary">Undo</button>
+        </div>
+      </section>
+
+      <!-- Opponent disconnect banner -->
+      <div id="opp-disconnect-alert" class="alert-box alert-warn compact-alert hidden" role="status">
+        Opponent lost connection — keeping their seat open to reconnect.
+      </div>
+
+      <!-- Move error / feedback alert -->
+      <div id="game-error" class="alert-box alert-error compact-alert hidden" role="alert"></div>
+
+      <!-- 8x8 Playfield -->
+      <div class="board-stage">
+        <div class="board-frame">
+          <div
+            id="dama-board"
+            class="dama-board"
+            role="grid"
+            aria-label="Moroccan Dama 8 by 8 board"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Game Over Panel (Screen 4 state alongside the board) -->
+      <section id="gameover-panel" class="gameover-panel hidden" aria-live="assertive">
+        <div class="gameover-copy">
+          <h2 id="gameover-title" class="gameover-title">Match Finished</h2>
+          <p id="gameover-reason" class="gameover-reason"></p>
+          <p id="rematch-status-text" class="rematch-note"></p>
+        </div>
+        <div class="gameover-actions">
+          <button id="btn-rematch" type="button" class="btn btn-primary">
+            Request rematch
+          </button>
+          <button id="btn-gameover-home" type="button" class="btn btn-secondary">
+            Home
+          </button>
+        </div>
+      </section>
+
+      <!-- Bottom bar: Local Player + Actions -->
+      <section class="player-bar self-bar" aria-label="Your status and controls">
+        <div class="player-identity">
+          <span id="self-piece-badge" class="piece-mini piece-white" aria-hidden="true"></span>
+          <div class="player-name-wrap">
+            <div class="player-name-line">
+              <span id="self-name" class="player-name">You</span>
+              <span class="you-tag">You</span>
+              <span id="self-conn-badge" class="conn-dot conn-online" title="Connected"></span>
+            </div>
+            <span id="self-status-sub" class="player-sub">Room <span id="game-room-code">------</span></span>
+          </div>
+        </div>
+
+        <div class="self-right-cluster">
+          <div class="captured-tray" aria-label="Pieces captured by you">
+            <span class="captured-label">Captured</span>
+            <strong id="self-captured-count" class="captured-count">0</strong>
+          </div>
+
+          <button id="btn-open-rules-game" type="button" class="btn btn-tiny btn-ghost" aria-label="Game rules">
+            Rules
+          </button>
+
+          <div id="resign-wrap" class="resign-wrap">
+            <button id="btn-resign-init" type="button" class="btn btn-tiny btn-ghost-danger">
+              Resign
+            </button>
+            <div id="resign-confirm-group" class="resign-confirm hidden">
+              <button id="btn-resign-confirm" type="button" class="btn btn-tiny btn-danger">
+                Confirm
+              </button>
+              <button id="btn-resign-cancel" type="button" class="btn btn-tiny btn-secondary">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ERROR / ROOM UNAVAILABLE SCREEN -->
+    <main id="screen-room-error" class="screen screen-card hidden">
+      <header class="brand-header compact">
+        <h1 id="room-error-title" class="brand-title">Room Unavailable</h1>
+        <p id="room-error-message" class="brand-subtitle">This room could not be opened.</p>
+      </header>
+      <div class="card-panel">
+        <button id="btn-error-home" type="button" class="btn btn-primary btn-block">
+          Return to home
+        </button>
+      </div>
+    </main>
+
+    <!-- RULES DRAWER / MODAL -->
+    <div id="rules-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="rules-modal-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="rules-modal-title">Moroccan Dama Rules (الضامة)</h2>
+          <button id="btn-close-rules" type="button" class="icon-close" aria-label="Close rules">✕</button>
+        </div>
+        <ul class="rules-list">
+          <li><strong>8×8 Board, 12 Pieces:</strong> Played on the 32 dark squares. Light moves first.</li>
+          <li><strong>Men (Pawns):</strong> Move 1 square diagonally forward. Capture diagonally forward only (never backward).</li>
+          <li><strong>Flying Kings (Dama):</strong> Crowned on the far row. Move and capture at any unobstructed diagonal distance in all 4 directions.</li>
+          <li><strong>Mandatory Maximum Capture:</strong> If a capture exists, you must capture—and must choose a path capturing the greatest total number of pieces.</li>
+          <li><strong>Equal Captures:</strong> Equal-length maximum captures are freely selectable (no king tie-break in initial profile).</li>
+          <li><strong>Crowning Mid-Jump:</strong> Reaching the far row crowns a man immediately and ends the turn.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
