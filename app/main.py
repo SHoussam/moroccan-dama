@@ -52,9 +52,9 @@ def _parse_origins(app_env: str, raw_origins: str, public_base_url: str) -> list
     items = [o.strip() for o in raw_origins.split(",") if o.strip()]
     if items:
         return items
-    if app_env.lower() == "production" and public_base_url:
-        return [public_base_url.rstrip("/")]
-    return ["http://127.0.0.1:8000", "http://localhost:8000"]
+    if app_env.lower() == "production" and public_base_url and public_base_url != "http://127.0.0.1:8000":
+        return [public_base_url.rstrip("/"), "*"]
+    return ["*"]
 
 
 def create_app(
@@ -73,7 +73,7 @@ def create_app(
         room_manager = RoomManager(
             room_code_length=int(os.getenv("ROOM_CODE_LENGTH", "6")),
             waiting_room_ttl_seconds=int(os.getenv("WAITING_ROOM_TTL_SECONDS", "1800")),
-            disconnect_grace_seconds=int(os.getenv("DISCONNECT_GRACE_SECONDS", "120")),
+            disconnect_grace_seconds=int(os.getenv("DISCONNECT_GRACE_SECONDS", "60")),
             finished_room_ttl_seconds=int(os.getenv("FINISHED_ROOM_TTL_SECONDS", "1800")),
             rules_config=rules_config,
         )

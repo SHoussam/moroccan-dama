@@ -207,6 +207,14 @@ export class SoundEngine {
     this._tone(ctx, { freq: 3290, type: "sine", start: 0.012, duration: 0.11, gain: 0.045 });
   }
 
+  playChat() {
+    const ctx = this._ensureContext();
+    if (!ctx) return;
+    // Friendly, crisp two-tone chat chime (F5 -> A5)
+    this._tone(ctx, { freq: 698.46, type: "sine", duration: 0.08, gain: 0.06 });
+    this._tone(ctx, { freq: 880.0, type: "sine", start: 0.065, duration: 0.11, gain: 0.065 });
+  }
+
   playWin(iWon = true) {
     const ctx = this._ensureContext();
     if (!ctx) return;

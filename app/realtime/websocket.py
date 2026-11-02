@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import time
 from collections import deque
@@ -14,6 +15,7 @@ from app.realtime.messages import (
     PingMessage,
     RequestRematchMessage,
     ResignMessage,
+    SendChatMessage,
     SendTauntMessage,
     parse_client_message,
 )
@@ -54,10 +56,15 @@ class ConnectionHub:
 
     def __init__(self) -> None:
         self._rooms: dict[str, dict[str, ActiveSocketEntry]] = {}
+        self._disconnect_timers: dict[tuple[str, str], asyncio.Task[None]] = {}
 
     async def register(
         self, room_code: str, seat_id: str, token: str, websocket: WebSocket
     ) -> None:
+        timer = self._disconnect_timers.pop((room_code, seat_id), None)
+        if timer is not None and not timer.done():
+            timer.cancel()
+
         room_map = self._rooms.setdefault(room_code, {})
         previous = room_map.get(seat_id)
         room_map[seat_id] = ActiveSocketEntry(
@@ -81,6 +88,72 @@ class ConnectionHub:
         if not room_map:
             self._rooms.pop(room_code, None)
         return True
+
+    def schedule_disconnect_timeout(
+        self,
+        room_code: str,
+        seat_id: str,
+        token: str,
+        seat_name: str,
+        timeout_seconds: float,
+        room_manager: RoomManager,
+    ) -> asyncio.Task[None]:
+        prev = self._disconnect_timers.pop((room_code, seat_id), None)
+        if prev is not None and not prev.done():
+            prev.cancel()
+
+        async def _disconnect_worker() -> None:
+            try:
+                await asyncio.sleep(timeout_seconds)
+                try:
+                    room, current_seat = room_manager.authenticate_seat(room_code, token)
+                except RoomError:
+                    return
+
+                if not current_seat.connected:
+                    # Connection was not restored in time (1 minute) -> close room!
+                    await self.broadcast_raw(
+                        room_code,
+                        {
+                            "type": "room_closed",
+                            "reason": "connection_timeout",
+                            "message": f"Room closed: {seat_name} disconnected and did not reconnect within {int(timeout_seconds)}s.",
+                        },
+                    )
+                    await self.close_room(
+                        room_code,
+                        code=4410,
+                        reason="Connection timeout - room closed",
+                    )
+                    room_manager.close_room(room_code)
+            except asyncio.CancelledError:
+                # Cancelled when player reconnects or room is closed
+                pass
+            except Exception:
+                pass
+            finally:
+                self._disconnect_timers.pop((room_code, seat_id), None)
+
+        task = asyncio.create_task(_disconnect_worker())
+        self._disconnect_timers[(room_code, seat_id)] = task
+        return task
+
+    async def close_room(
+        self, room_code: str, code: int = 4410, reason: str = "Room closed"
+    ) -> None:
+        """Cancel disconnect timers and close all live connections in a room."""
+        for key in list(self._disconnect_timers.keys()):
+            if key[0] == room_code:
+                timer = self._disconnect_timers.pop(key, None)
+                if timer is not None and not timer.done():
+                    timer.cancel()
+
+        room_map = self._rooms.pop(room_code, None)
+        if not room_map:
+            return
+        for entry in list(room_map.values()):
+            with contextlib.suppress(Exception):
+                await entry.websocket.close(code=code, reason=reason)
 
     async def send_safe(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
         with contextlib.suppress(Exception):
@@ -234,6 +307,22 @@ async def room_websocket_endpoint(
                 )
                 continue
 
+            if isinstance(msg, SendChatMessage):
+                clean_text = " ".join(msg.text.split())
+                if not clean_text:
+                    continue
+                await hub.broadcast_raw(
+                    canonical_code,
+                    {
+                        "type": "chat_message",
+                        "text": clean_text[:200],
+                        "from_color": seat.color,
+                        "sender_name": seat.name,
+                        "timestamp": int(time.time() * 1000),
+                    },
+                )
+                continue
+
             if isinstance(msg, MakeMoveMessage):
                 attempt = MoveAttempt(from_pos=msg.from_pos, landings=msg.landings)
                 try:
@@ -359,6 +448,14 @@ async def room_websocket_endpoint(
                         "room": snap.model_dump(mode="json", by_alias=True),
                     },
                     exclude_seat_id=seat_id,
+                )
+                hub.schedule_disconnect_timeout(
+                    room_code=canonical_code,
+                    seat_id=seat_id,
+                    token=token,
+                    seat_name=seat.name,
+                    timeout_seconds=float(room_manager.disconnect_grace_seconds),
+                    room_manager=room_manager,
                 )
             except RoomError:
                 pass

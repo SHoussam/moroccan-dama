@@ -59,8 +59,13 @@ export class RoomSocket {
         return;
       }
 
-      // 4403 (unauthorized), 4404 (not found / expired), 4000 (superseded)
-      if (event.code === 4403 || event.code === 4404 || event.code === 4000) {
+      // 4403 (unauthorized), 4404 (not found / expired), 4000 (superseded), 4410 (room closed / timeout)
+      if (
+        event.code === 4403 ||
+        event.code === 4404 ||
+        event.code === 4000 ||
+        event.code === 4410
+      ) {
         this.closedIntentionally = true;
         this.onConnectionChange?.({ connected: false, reconnecting: false });
         this.onFatalClose?.(event.code);
@@ -107,6 +112,13 @@ export class RoomSocket {
     return this.send({
       type: "send_taunt",
       taunt_id: tauntId,
+    });
+  }
+
+  sendChat(text) {
+    return this.send({
+      type: "send_chat",
+      text,
     });
   }
 

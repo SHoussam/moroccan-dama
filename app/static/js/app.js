@@ -67,6 +67,7 @@ class DamaApp {
 
     this.ui.setSoundMuted(this.sound.isMuted());
     this.ui.initTauntBar((tauntId) => this._sendTaunt(tauntId));
+    this.ui.initChat((text) => this._sendChat(text));
 
     this.board = new BoardController({
       container: document.getElementById("dama-board"),
@@ -113,6 +114,16 @@ class DamaApp {
     const sent = this.socket.sendTaunt(tauntId);
     if (!sent) {
       this.ui.setGameError("Still reconnecting—try your taunt again in a moment.");
+      return false;
+    }
+    return true;
+  }
+
+  _sendChat(text) {
+    if (!this.socket) return false;
+    const sent = this.socket.sendChat(text);
+    if (!sent) {
+      this.ui.setGameError("Still reconnecting—message could not be sent.");
       return false;
     }
     return true;
@@ -229,11 +240,13 @@ class DamaApp {
     }
     this.currentSnapshot = null;
     this.ui.setNetStatus({ connected: false, reconnecting: false });
+    this.ui.stopAllTimers?.();
   }
 
   _navigateHome() {
     this._disconnectSocket();
     this.activeRoomCode = null;
+    this.ui.clearChatMessages();
     if (window.location.pathname !== "/") {
       window.history.pushState({}, "", "/");
     }
@@ -394,12 +407,13 @@ class DamaApp {
       token,
       onMessage: (msg) => this._handleSocketMessage(msg),
       onConnectionChange: (state) => this.ui.setNetStatus(state),
-      onFatalClose: () => {
+      onFatalClose: (code) => {
         clearStoredSeat(roomCode);
-        this.ui.showRoomErrorScreen(
-          "Session Ended",
-          "This room is no longer available or your session expired."
-        );
+        const title = code === 4410 ? "Room Closed" : "Session Ended";
+        const message = code === 4410
+          ? "The room was closed because a player lost connection and did not reconnect within 1 minute."
+          : "This room is no longer available or your session expired.";
+        this.ui.showRoomErrorScreen(title, message);
       },
     });
     this.socket.connect();
@@ -445,6 +459,27 @@ class DamaApp {
         break;
       }
 
+      case "chat_message": {
+        const myColor = this.currentSnapshot?.your_color || "white";
+        const isSelf = msg.from_color === myColor;
+        const side = isSelf ? "self" : "opp";
+        const sender = msg.sender_name || (isSelf ? "You" : "Opponent");
+
+        if (!isSelf) {
+          this.sound.playChat();
+        }
+
+        this.ui.showSpeechBubble(side, sender, msg.text);
+        this.ui.appendChatMessage({
+          text: msg.text,
+          fromColor: msg.from_color,
+          senderName: sender,
+          timestamp: msg.timestamp,
+          isSelf,
+        });
+        break;
+      }
+
       case "player_disconnected":
         if (msg.room) {
           this._applyRoomSnapshot(msg.room);
@@ -477,6 +512,15 @@ class DamaApp {
           this.board.resetSelection();
           this.board.render();
         }
+        break;
+
+      case "room_closed":
+        this._disconnectSocket();
+        clearStoredSeat(this.activeRoomCode);
+        this.ui.showRoomErrorScreen(
+          "Room Closed",
+          msg.message || "Room closed: connection problem was not solved within 1 minute."
+        );
         break;
 
       case "error":

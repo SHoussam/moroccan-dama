@@ -166,6 +166,36 @@ def test_disconnect_grace_period_preserves_seat_and_reconnect_restores_it():
     assert snap_reconn.game.status == "active"
 
 
+def test_one_minute_disconnect_expires_active_room_and_close_room():
+    clock = FakeClock()
+    mgr = RoomManager(clock=clock, disconnect_grace_seconds=60)
+    p1 = mgr.create_room("Houssam")
+    p2 = mgr.join_room(p1.room_code, "Friend")
+
+    mgr.mark_connected(p1.room_code, p1.player_token)
+    mgr.mark_connected(p1.room_code, p2.player_token)
+
+    # Disconnect Black
+    mgr.mark_disconnected(p1.room_code, p2.player_token)
+
+    # 30 seconds later (within 60s), room is still alive
+    clock.advance(30)
+    snap = mgr.get_public_snapshot(p1.room_code)
+    assert snap.players["black"].reconnect_grace_remaining_seconds == 30
+
+    # 31 more seconds later (total 61s > 60s disconnect grace), room is expired
+    clock.advance(31)
+    with pytest.raises(RoomError) as exc_expired:
+        mgr.get_public_snapshot(p1.room_code)
+    assert exc_expired.value.code in ("room_expired", "room_not_found")
+
+    # Explicit close_room removes a room immediately
+    p3 = mgr.create_room("Player3")
+    assert mgr.close_room(p3.room_code) is True
+    with pytest.raises(RoomError):
+        mgr.get_public_snapshot(p3.room_code)
+
+
 def test_resignation_and_mutual_rematch_flow():
     async def run() -> None:
         mgr = RoomManager(clock=FakeClock())

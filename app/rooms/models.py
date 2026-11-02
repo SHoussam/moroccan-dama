@@ -26,7 +26,7 @@ class RoomSnapshot(BaseModel):
     your_color: Color | None = None
     rematch_requested_by: list[Color] = Field(default_factory=list)
     match_number: int = 1
-    disconnect_grace_seconds: int = 120
+    disconnect_grace_seconds: int = 60
 
 
 class CreateRoomResult(BaseModel):

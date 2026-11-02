@@ -96,7 +96,7 @@ class RoomManager:
         *,
         room_code_length: int = 6,
         waiting_room_ttl_seconds: int = 1800,
-        disconnect_grace_seconds: int = 120,
+        disconnect_grace_seconds: int = 60,
         finished_room_ttl_seconds: int = 1800,
         rules_config: RulesConfig = DEFAULT_RULES_CONFIG,
         clock: Callable[[], float] = time.monotonic,
@@ -115,7 +115,13 @@ class RoomManager:
             return (now - room.created_at) > self.waiting_room_ttl_seconds
         if status == "finished":
             return (now - room.updated_at) > self.finished_room_ttl_seconds
-        # Active room: expire if all seats are disconnected past grace period
+        # Active room: expire if any seat has been disconnected longer than disconnect_grace_seconds
+        if status == "active" and room.seats:
+            for s in room.seats:
+                if not s.connected and s.disconnected_at is not None:
+                    if (now - s.disconnected_at) > self.disconnect_grace_seconds:
+                        return True
+        # Also expire if all seats are disconnected past grace period
         if room.seats and all(not s.connected for s in room.seats):
             disconnect_times = [
                 s.disconnected_at for s in room.seats if s.disconnected_at is not None
@@ -125,6 +131,14 @@ class RoomManager:
             if not disconnect_times and (now - room.updated_at) > self.waiting_room_ttl_seconds:
                 return True
         return False
+
+    def close_room(self, raw_code: str) -> bool:
+        """Explicitly close and remove a room by code."""
+        try:
+            code = normalize_room_code(raw_code)
+        except RoomError:
+            return False
+        return self._rooms.pop(code, None) is not None
 
     def cleanup_expired(self) -> int:
         """Remove expired rooms and return count removed."""

@@ -276,3 +276,154 @@ def test_websocket_taunt_broadcast_allowlist_and_cooldown():
             ws2.send_json({"type": "send_taunt", "taunt_id": "<script>alert(1)</script>"})
             bad_err = _drain_until_type(ws2, "error")
             assert bad_err["code"] == "invalid_message"
+
+            # In-game chat broadcast between players
+            ws1.send_json({"type": "send_chat", "text": "Salam khoya, rak nadi!"})
+            chat1 = _drain_until_type(ws1, "chat_message")
+            chat2 = _drain_until_type(ws2, "chat_message")
+            assert chat1["text"] == "Salam khoya, rak nadi!"
+            assert chat1["sender_name"] == "Houssam"
+            assert chat1["from_color"] == "white"
+            assert "timestamp" in chat1
+            assert chat2 == chat1
+
+            # Opponent replies in chat
+            ws2.send_json({"type": "send_chat", "text": "Mer7ba bik, la3ba wa3ra!"})
+            rep1 = _drain_until_type(ws1, "chat_message")
+            rep2 = _drain_until_type(ws2, "chat_message")
+            assert rep1["text"] == "Mer7ba bik, la3ba wa3ra!"
+            assert rep1["sender_name"] == "Wiam"
+            assert rep1["from_color"] == "black"
+            assert rep2 == rep1
+
+
+def test_disconnect_timeout_closes_room_and_disconnects_opponent():
+    import asyncio
+    from app.realtime.websocket import ConnectionHub
+    from app.rooms.manager import RoomManager
+
+    class FakeWS:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+            self.close_code = None
+            self.messages = []
+
+        async def send_json(self, data: dict) -> None:
+            self.messages.append(data)
+
+        async def close(self, code: int = 1000, reason: str = "") -> None:
+            self.closed = True
+            self.close_code = code
+
+    async def run() -> None:
+        room_mgr = RoomManager(disconnect_grace_seconds=1)
+        hub = ConnectionHub()
+
+        r = room_mgr.create_room("Houssam")
+        code = r.room_code
+        j = room_mgr.join_room(code, "Wiam")
+
+        ws1 = FakeWS("ws1")
+        ws2 = FakeWS("ws2")
+
+        await hub.register(code, "seat_1", r.player_token, ws1)
+        await hub.register(code, "seat_2", j.player_token, ws2)
+        room_mgr.mark_connected(code, r.player_token)
+        room_mgr.mark_connected(code, j.player_token)
+
+        # Seat 2 disconnects
+        hub.unregister(code, "seat_2", ws2)
+        room_mgr.mark_disconnected(code, j.player_token)
+
+        task = hub.schedule_disconnect_timeout(
+            room_code=code,
+            seat_id="seat_2",
+            token=j.player_token,
+            seat_name="Wiam",
+            timeout_seconds=0.05,
+            room_manager=room_mgr,
+        )
+
+        assert not task.done()
+        await asyncio.sleep(0.1)
+        assert task.done()
+
+        # Seat 1 received room_closed and ws1 was closed with code 4410
+        assert ws1.closed is True
+        assert ws1.close_code == 4410
+        assert any(
+            m.get("type") == "room_closed" and m.get("reason") == "connection_timeout"
+            for m in ws1.messages
+        )
+
+        # Room must be removed from RoomManager
+        assert code not in room_mgr._rooms
+
+    asyncio.run(run())
+
+
+def test_reconnect_cancels_disconnect_timeout():
+    import asyncio
+    from app.realtime.websocket import ConnectionHub
+    from app.rooms.manager import RoomManager
+
+    class FakeWS:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.closed = False
+            self.close_code = None
+            self.messages = []
+
+        async def send_json(self, data: dict) -> None:
+            self.messages.append(data)
+
+        async def close(self, code: int = 1000, reason: str = "") -> None:
+            self.closed = True
+            self.close_code = code
+
+    async def run() -> None:
+        room_mgr = RoomManager(disconnect_grace_seconds=1)
+        hub = ConnectionHub()
+
+        r = room_mgr.create_room("Houssam")
+        code = r.room_code
+        j = room_mgr.join_room(code, "Wiam")
+
+        ws1 = FakeWS("ws1")
+        ws2 = FakeWS("ws2")
+
+        await hub.register(code, "seat_1", r.player_token, ws1)
+        await hub.register(code, "seat_2", j.player_token, ws2)
+        room_mgr.mark_connected(code, r.player_token)
+        room_mgr.mark_connected(code, j.player_token)
+
+        # Seat 2 disconnects
+        hub.unregister(code, "seat_2", ws2)
+        room_mgr.mark_disconnected(code, j.player_token)
+
+        task = hub.schedule_disconnect_timeout(
+            room_code=code,
+            seat_id="seat_2",
+            token=j.player_token,
+            seat_name="Wiam",
+            timeout_seconds=0.2,
+            room_manager=room_mgr,
+        )
+
+        # Seat 2 reconnects before timeout
+        ws2_re = FakeWS("ws2_re")
+        await hub.register(code, "seat_2", j.player_token, ws2_re)
+        room_mgr.mark_connected(code, j.player_token)
+
+        # Timer task should have been cancelled by register
+        await asyncio.sleep(0.01)
+        assert task.cancelled()
+
+        await asyncio.sleep(0.25)
+        # Verify ws1 was NOT closed and room remains active
+        assert ws1.closed is False
+        assert code in room_mgr._rooms
+        assert room_mgr.get_public_snapshot(code).game.status == "active"
+
+    asyncio.run(run())

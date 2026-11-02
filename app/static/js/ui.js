@@ -19,12 +19,82 @@ export class UIController {
     this.netBanner = byId("net-banner");
     this.netBannerText = byId("net-banner-text");
     this.rulesModal = byId("rules-modal");
+    this.chatPanel = byId("chat-panel");
+    this.chatBackdrop = byId("chat-backdrop");
+    this.chatMessages = byId("chat-messages");
+    this.chatInput = byId("chat-input");
+    this.chatForm = byId("chat-form");
+    this.chatBadge = byId("chat-unread-badge");
+    this.unreadChatCount = 0;
+
     this._bubbleTimers = { opp: null, self: null };
     this._calloutTimer = null;
     this._tauntCooldownTimer = null;
+    this._oppDisconnectInterval = null;
+    this._selfNetInterval = null;
 
     this._renderBrandEmblems();
     this._bindStaticControls();
+    this._initTheme();
+  }
+
+  _initTheme() {
+    let savedTheme = null;
+    try {
+      savedTheme = localStorage.getItem("dama_theme");
+    } catch {
+      // ignore storage errors
+    }
+    const isPinkPurple = savedTheme === "pink-purple";
+    this.setTheme(isPinkPurple ? "pink-purple" : "classic", false);
+
+    const toggleBtn = byId("btn-theme-toggle");
+    toggleBtn?.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme");
+      const nextTheme = current === "pink-purple" ? "classic" : "pink-purple";
+      this.setTheme(nextTheme, true);
+    });
+  }
+
+  setTheme(themeName, notify = false) {
+    const isPinkPurple = themeName === "pink-purple";
+    if (isPinkPurple) {
+      document.documentElement.setAttribute("data-theme", "pink-purple");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+
+    try {
+      localStorage.setItem("dama_theme", themeName);
+    } catch {
+      // ignore
+    }
+
+    const toggleBtn = byId("btn-theme-toggle");
+    if (toggleBtn) {
+      toggleBtn.setAttribute("aria-checked", isPinkPurple ? "true" : "false");
+      toggleBtn.title = isPinkPurple
+        ? "Current: mimiiiine. Click for Classic Moroccan theme."
+        : "Current: Classic Moroccan. Click for mimiiiine theme.";
+    }
+
+    const labelText = byId("theme-switch-label-text");
+    if (labelText) {
+      labelText.textContent = isPinkPurple ? "mimiiiine" : "Cedar";
+    }
+
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute("content", isPinkPurple ? "#35103c" : "#3c2618");
+    }
+
+    if (notify) {
+      this.showToast(
+        isPinkPurple
+          ? "🌸 Switched to mimiiiine theme"
+          : "🪵 Switched to Classic Moroccan theme"
+      );
+    }
   }
 
   _renderBrandEmblems() {
@@ -36,12 +106,19 @@ export class UIController {
     byId("btn-open-rules-home")?.addEventListener("click", () => this.openRules());
     byId("btn-open-rules-game")?.addEventListener("click", () => this.openRules());
     byId("btn-close-rules")?.addEventListener("click", () => this.closeRules());
+    byId("btn-chat-toggle")?.addEventListener("click", () => this.toggleChat());
+    byId("btn-close-chat")?.addEventListener("click", () => this.closeChat());
+    this.chatBackdrop?.addEventListener("click", () => this.closeChat());
     this.rulesModal?.addEventListener("click", (e) => {
       if (e.target === this.rulesModal) this.closeRules();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.rulesModal.classList.contains("hidden")) {
-        this.closeRules();
+      if (e.key === "Escape") {
+        if (this.rulesModal && !this.rulesModal.classList.contains("hidden")) {
+          this.closeRules();
+        } else if (this.chatPanel && !this.chatPanel.classList.contains("hidden")) {
+          this.closeChat();
+        }
       }
     });
 
@@ -87,16 +164,121 @@ export class UIController {
     }, 2050);
   }
 
+  initChat(onSendChat) {
+    if (!this.chatForm) return;
+    this.chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = this.chatInput?.value?.trim();
+      if (!text) return;
+      const sent = onSendChat?.(text);
+      if (sent !== false) {
+        if (this.chatInput) this.chatInput.value = "";
+      }
+    });
+  }
+
+  toggleChat(force) {
+    if (!this.chatPanel) return;
+    const isHidden = this.chatPanel.classList.contains("hidden");
+    const willOpen = typeof force === "boolean" ? force : isHidden;
+    if (willOpen) {
+      this.openChat();
+    } else {
+      this.closeChat();
+    }
+  }
+
+  openChat() {
+    if (!this.chatPanel) return;
+    this.chatPanel.classList.remove("hidden");
+    this.chatBackdrop?.classList.remove("hidden");
+    this.unreadChatCount = 0;
+    if (this.chatBadge) {
+      this.chatBadge.classList.add("hidden");
+      this.chatBadge.textContent = "0";
+    }
+    if (this.chatMessages) {
+      this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+    this.chatInput?.focus();
+  }
+
+  closeChat() {
+    if (!this.chatPanel) return;
+    this.chatPanel.classList.add("hidden");
+    this.chatBackdrop?.classList.add("hidden");
+  }
+
+  clearChatMessages() {
+    if (this.chatMessages) {
+      this.chatMessages.innerHTML = '<div class="chat-empty-hint">Say salam or chat with your opponent!</div>';
+    }
+    this.unreadChatCount = 0;
+    if (this.chatBadge) {
+      this.chatBadge.classList.add("hidden");
+      this.chatBadge.textContent = "0";
+    }
+  }
+
+  appendChatMessage({ text, fromColor, senderName, timestamp, isSelf }) {
+    if (!this.chatMessages) return;
+
+    const emptyHint = this.chatMessages.querySelector(".chat-empty-hint");
+    if (emptyHint) {
+      emptyHint.remove();
+    }
+
+    const row = document.createElement("div");
+    row.className = `chat-msg ${isSelf ? "chat-msg-self" : "chat-msg-opp"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "chat-msg-meta";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "chat-msg-author";
+    nameSpan.textContent = isSelf ? "You" : senderName;
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "chat-msg-time";
+    const date = timestamp ? new Date(timestamp) : new Date();
+    timeSpan.textContent = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    meta.append(nameSpan, timeSpan);
+
+    const body = document.createElement("div");
+    body.className = "chat-msg-body";
+    body.textContent = text;
+
+    row.append(meta, body);
+    this.chatMessages.appendChild(row);
+    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+
+    if (!isSelf && this.chatPanel?.classList.contains("hidden")) {
+      this.unreadChatCount += 1;
+      if (this.chatBadge) {
+        this.chatBadge.textContent = String(this.unreadChatCount);
+        this.chatBadge.classList.remove("hidden");
+      }
+    }
+  }
+
   setSoundMuted(muted) {
     const btn = byId("btn-sound-toggle");
     const label = byId("sound-toggle-label");
-    if (!btn || !label) return;
+    const iconOn = byId("sound-icon-on");
+    const iconOff = byId("sound-icon-off");
+    if (!btn) return;
     btn.setAttribute("aria-pressed", muted ? "false" : "true");
     btn.setAttribute(
       "aria-label",
       muted ? "Unmute sound effects" : "Mute sound effects"
     );
-    label.textContent = muted ? "🔇 Muted" : "🔊 Sound";
+    btn.title = muted ? "Unmute sound effects" : "Mute sound effects";
+    if (label) label.textContent = muted ? "Muted" : "Sound";
+    if (iconOn && iconOff) {
+      iconOn.classList.toggle("hidden", muted);
+      iconOff.classList.toggle("hidden", !muted);
+    }
   }
 
   showSpeechBubble(side, senderName, text) {
@@ -188,6 +370,7 @@ export class UIController {
     }
     if (screenId !== "screen-game") {
       this.clearTransientBanter();
+      this.closeChat();
     }
     this.resetResignConfirm();
   }
@@ -206,9 +389,31 @@ export class UIController {
   setNetStatus({ connected, reconnecting }) {
     if (!this.netBanner) return;
     if (reconnecting) {
-      this.netBannerText.textContent = "Connection lost — reconnecting…";
+      if (!this._selfNetInterval) {
+        let remaining = 60;
+        const updateSelfText = () => {
+          if (remaining > 0) {
+            this.netBannerText.textContent = `Connection lost — reconnecting… (Room closes in ${remaining}s)`;
+          } else {
+            this.netBannerText.textContent = "Connection timed out — room closed.";
+          }
+        };
+        updateSelfText();
+        this._selfNetInterval = window.setInterval(() => {
+          remaining -= 1;
+          updateSelfText();
+          if (remaining <= 0) {
+            window.clearInterval(this._selfNetInterval);
+            this._selfNetInterval = null;
+          }
+        }, 1000);
+      }
       this.netBanner.classList.remove("hidden");
     } else {
+      if (this._selfNetInterval) {
+        window.clearInterval(this._selfNetInterval);
+        this._selfNetInterval = null;
+      }
       this.netBanner.classList.add("hidden");
     }
 
@@ -216,6 +421,55 @@ export class UIController {
     if (selfDot) {
       selfDot.className = `conn-dot ${connected ? "conn-online" : "conn-offline"}`;
       selfDot.title = connected ? "Connected" : "Reconnecting";
+    }
+  }
+
+  startOpponentDisconnectTimer(oppName, initialSeconds) {
+    const oppAlert = byId("opp-disconnect-alert");
+    if (!oppAlert) return;
+
+    if (this._oppDisconnectInterval) {
+      return;
+    }
+
+    let remaining = Math.max(0, initialSeconds);
+    const updateText = () => {
+      if (remaining > 0) {
+        oppAlert.textContent = `⚠️ ${oppName} lost connection — room will close in ${remaining}s if not reconnected.`;
+        oppAlert.classList.remove("hidden");
+      } else {
+        oppAlert.textContent = `⚠️ ${oppName} connection timed out — closing room…`;
+        oppAlert.classList.remove("hidden");
+      }
+    };
+
+    updateText();
+    this._oppDisconnectInterval = window.setInterval(() => {
+      remaining -= 1;
+      updateText();
+      if (remaining <= 0) {
+        window.clearInterval(this._oppDisconnectInterval);
+        this._oppDisconnectInterval = null;
+      }
+    }, 1000);
+  }
+
+  stopOpponentDisconnectTimer() {
+    if (this._oppDisconnectInterval) {
+      window.clearInterval(this._oppDisconnectInterval);
+      this._oppDisconnectInterval = null;
+    }
+    const oppAlert = byId("opp-disconnect-alert");
+    if (oppAlert) {
+      oppAlert.classList.add("hidden");
+    }
+  }
+
+  stopAllTimers() {
+    this.stopOpponentDisconnectTimer();
+    if (this._selfNetInterval) {
+      window.clearInterval(this._selfNetInterval);
+      this._selfNetInterval = null;
     }
   }
 
@@ -260,6 +514,7 @@ export class UIController {
   }
 
   showRoomErrorScreen(title, message) {
+    this.stopAllTimers();
     byId("room-error-title").textContent = title;
     byId("room-error-message").textContent = message;
     this.showScreen("screen-room-error");
@@ -348,13 +603,15 @@ export class UIController {
     byId("self-name").textContent = me ? me.name : "You";
     byId("game-room-code").textContent = roomSnapshot.room_code;
 
-    // Opponent disconnect banner during active game
-    const oppAlert = byId("opp-disconnect-alert");
+    // Opponent disconnect banner during active game with 1-minute countdown
     if (opp && !opp.connected && game.status === "active") {
-      oppAlert.textContent = `${opp.name} lost connection — holding their seat to reconnect.`;
-      oppAlert.classList.remove("hidden");
+      const graceRemaining =
+        typeof opp.reconnect_grace_remaining_seconds === "number"
+          ? opp.reconnect_grace_remaining_seconds
+          : (roomSnapshot.disconnect_grace_seconds ?? 60);
+      this.startOpponentDisconnectTimer(opp.name, graceRemaining);
     } else {
-      oppAlert.classList.add("hidden");
+      this.stopOpponentDisconnectTimer();
     }
 
     // Turn & Mandatory Capture strip

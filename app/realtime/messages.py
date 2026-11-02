@@ -63,12 +63,20 @@ class SendTauntMessage(BaseModel):
     taunt_id: TauntId
 
 
+class SendChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["send_chat"]
+    text: str = Field(min_length=1, max_length=200)
+
+
 ClientMessage = Annotated[
     MakeMoveMessage
     | ResignMessage
     | RequestRematchMessage
     | PingMessage
-    | SendTauntMessage,
+    | SendTauntMessage
+    | SendChatMessage,
     Field(discriminator="type"),
 ]
 
